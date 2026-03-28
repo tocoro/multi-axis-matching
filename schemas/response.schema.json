@@ -63,7 +63,8 @@
                   "type": "string",
                   "enum": ["supported", "unknown", "conflict"]
                 },
-                "reason": { "type": "string" }
+                "reason": { "type": "string" },
+                "hard_constraint_violation": { "type": "boolean" }
               }
             }
           },

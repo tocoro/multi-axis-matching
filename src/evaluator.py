@@ -18,45 +18,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 PROMPTS_DIR = BASE_DIR / "prompts"
 SCHEMAS_DIR = BASE_DIR / "schemas"
 
-# Problem type → evaluation axes with weights
-AXES_BY_TYPE: dict[str, list[dict]] = {
-    "entertainment.music": [
-        {"axis": "genre_match", "weight": 0.3},
-        {"axis": "mood_match", "weight": 0.25},
-        {"axis": "tempo_match", "weight": 0.15},
-        {"axis": "popularity", "weight": 0.15},
-        {"axis": "freshness", "weight": 0.15},
-    ],
-    "local.restaurant": [
-        {"axis": "cuisine_match", "weight": 0.25},
-        {"axis": "budget_match", "weight": 0.25},
-        {"axis": "atmosphere_match", "weight": 0.2},
-        {"axis": "location_match", "weight": 0.2},
-        {"axis": "rating", "weight": 0.1},
-    ],
-    "local.clinic": [
-        {"axis": "specialty_match", "weight": 0.3},
-        {"axis": "accessibility", "weight": 0.2},
-        {"axis": "reputation", "weight": 0.2},
-        {"axis": "availability", "weight": 0.15},
-        {"axis": "location_match", "weight": 0.15},
-    ],
-    "professional.legal": [
-        {"axis": "expertise_match", "weight": 0.35},
-        {"axis": "track_record", "weight": 0.25},
-        {"axis": "cost_match", "weight": 0.2},
-        {"axis": "accessibility", "weight": 0.1},
-        {"axis": "communication", "weight": 0.1},
-    ],
-    "commerce.product": [
-        {"axis": "feature_match", "weight": 0.3},
-        {"axis": "price_match", "weight": 0.25},
-        {"axis": "quality", "weight": 0.2},
-        {"axis": "brand_trust", "weight": 0.15},
-        {"axis": "availability", "weight": 0.1},
-    ],
-}
-
 HIGH_RISK_TYPES = {"local.clinic", "professional.legal"}
 
 
@@ -151,17 +112,17 @@ def extract_constraints(user_query: str, given_constraints: dict | None = None) 
     return call_llm(prompt, user_query)
 
 
-def get_axes_for_type(problem_type: str) -> list[dict]:
-    """problem_type に対応する評価軸リストを返す。"""
-    axes = AXES_BY_TYPE.get(problem_type)
-    if axes is None:
-        logger.warning("Unknown problem type '%s' — falling back to generic axes", problem_type)
-        return [
-            {"axis": "relevance", "weight": 0.4},
-            {"axis": "quality", "weight": 0.3},
-            {"axis": "feasibility", "weight": 0.3},
-        ]
-    return [dict(a) for a in axes]  # shallow copy
+def select_axes(problem_type: str, user_query: str) -> list[dict]:
+    """Step 3: 評価軸を LLM で動的に選定する。"""
+    prompt = _load_prompt("select_axes.txt")
+    user_message = json.dumps(
+        {"problem_type": problem_type, "user_query": user_query},
+        ensure_ascii=False,
+    )
+    result = call_llm(prompt, user_message)
+    axes = result.get("axes", [])
+    logger.info("Selected %d axes: %s", len(axes), [a["axis"] for a in axes])
+    return axes
 
 
 def evaluate_candidate(
@@ -171,7 +132,7 @@ def evaluate_candidate(
     axes: list[dict],
     constraints: dict,
 ) -> dict:
-    """Step 3: 候補を各軸で評価する。"""
+    """Step 4: 候補を各軸で評価する。"""
     prompt = _load_prompt("evaluate_candidate.txt")
     user_message = json.dumps(
         {
@@ -192,7 +153,7 @@ def aggregate_scores(
     axes: list[dict],
     is_high_risk: bool,
 ) -> tuple[float, float]:
-    """Step 4: 軸別スコアから総合スコアを算出する。
+    """Step 5: 軸別スコアから総合スコアを算出する。
 
     total_score = Σ(weight × score) / Σ(valid_weight)
     unknown 軸は分母・分子の両方から除外する。
@@ -238,12 +199,17 @@ def aggregate_scores(
 
 
 def check_disqualification(axis_scores: list[dict]) -> tuple[bool, list[str]]:
-    """ハード制約違反 (conflict) があれば disqualified にする。"""
+    """hard_constraints への明示的違反のみで disqualified を判定する。
+
+    axis_scores 内の hard_constraint_violation フラグを確認する。
+    conflict status であっても hard_constraint_violation がなければ失格にしない。
+    """
     reasons = []
     for entry in axis_scores:
-        if entry["status"] == "conflict":
+        if entry.get("hard_constraint_violation"):
             reasons.append(
-                f"Conflict on '{entry['axis']}': {entry.get('reason', 'N/A')}"
+                f"Hard constraint violation on '{entry['axis']}': "
+                f"{entry.get('reason', 'N/A')}"
             )
     return bool(reasons), reasons
 
@@ -257,9 +223,10 @@ def evaluate(request: dict) -> dict:
 
     1. problem type 推定
     2. 制約抽出
-    3. 候補ごとの軸別評価
-    4. 総合スコア集約
-    5. ランキング生成
+    3. 評価軸選択 (LLM)
+    4. 候補ごとの軸別評価
+    5. 総合スコア集約
+    6. ランキング生成
     """
     logging.basicConfig(
         level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -295,11 +262,11 @@ def evaluate(request: dict) -> dict:
         len(constraint_result.get("soft_preferences", {})),
     )
 
-    # Axes
-    axes = get_axes_for_type(problem_type)
+    # Step 3: axis selection (LLM-driven)
+    axes = select_axes(problem_type, user_query)
     logger.info("Selected %d evaluation axes", len(axes))
 
-    # Step 3 & 4: evaluate + aggregate per candidate
+    # Step 4 & 5: evaluate + aggregate per candidate
     ranking_entries: list[dict] = []
 
     for candidate in candidates:
@@ -335,7 +302,7 @@ def evaluate(request: dict) -> dict:
 
         ranking_entries.append(entry)
 
-    # Step 5: rank — disqualified を末尾、同グループ内は total_score 降順
+    # Step 6: rank — disqualified を末尾、同グループ内は total_score 降順
     ranking_entries.sort(
         key=lambda e: (not e.get("disqualified", False), e["total_score"]),
         reverse=True,

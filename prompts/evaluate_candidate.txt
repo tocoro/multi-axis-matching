@@ -7,6 +7,8 @@ problem_type と評価軸に従って候補を評価してください。
 - 根拠がなければ unknown
 - 条件違反は conflict
 - 推測で埋めない
+- hard_constraint_violation は hard_constraints に対する明示的違反の場合のみ true にする
+- conflict であっても hard_constraint でなければ hard_constraint_violation は false
 
 返却形式:
 {
@@ -16,7 +18,8 @@ problem_type と評価軸に従って候補を評価してください。
       "axis": "string",
       "score": 0.0,
       "status": "supported|unknown|conflict",
-      "reason": "string"
+      "reason": "string",
+      "hard_constraint_violation": false
     }
   ],
   "strengths": [],
