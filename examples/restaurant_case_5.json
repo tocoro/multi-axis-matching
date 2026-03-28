@@ -1,0 +1,21 @@
+{
+  "request_id": "case5",
+  "user_query": "恵比寿で静かに話せるイタリアン。予算は3000円以内",
+  "candidates": [
+    {
+      "candidate_id": "c5_strong",
+      "title": "Trattoria Stella",
+      "description": "恵比寿の人気イタリアン。静かで落ち着いた雰囲気。平均2500円。食べログ3.8"
+    },
+    {
+      "candidate_id": "c5_mid",
+      "title": "Cucina Media",
+      "description": "恵比寿のイタリアン。普通の雰囲気。平均2800円"
+    },
+    {
+      "candidate_id": "c5_weak",
+      "title": "Bar Rumore",
+      "description": "恵比寿のバー。賑やかな雰囲気。平均2000円"
+    }
+  ]
+}

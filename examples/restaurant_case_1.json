@@ -1,0 +1,16 @@
+{
+  "request_id": "case1",
+  "user_query": "恵比寿で静かに話せるイタリアン。予算は3000円以内",
+  "candidates": [
+    {
+      "candidate_id": "c1_good",
+      "title": "Trattoria Serena",
+      "description": "恵比寿の静かなイタリアン。落ち着いた雰囲気。平均2500円"
+    },
+    {
+      "candidate_id": "c1_expensive",
+      "title": "Ristorante Lusso",
+      "description": "恵比寿の高級イタリアン。非常に静かで上品な雰囲気。平均4500円"
+    }
+  ]
+}

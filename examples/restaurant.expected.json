@@ -1,0 +1,155 @@
+{
+  "request_id": "ex1",
+  "inferred_problem_type": "local.restaurant",
+  "problem_type_confidence": 0.92,
+  "extracted_constraints": {
+    "hard_constraints": {
+      "budget_max": 3000
+    },
+    "soft_preferences": {
+      "atmosphere": "quiet"
+    },
+    "notes": []
+  },
+  "selected_axes": [
+    {
+      "axis": "cuisine",
+      "weight": 0.25
+    },
+    {
+      "axis": "budget",
+      "weight": 0.25
+    },
+    {
+      "axis": "atmosphere",
+      "weight": 0.2
+    },
+    {
+      "axis": "location",
+      "weight": 0.2
+    },
+    {
+      "axis": "rating",
+      "weight": 0.1
+    }
+  ],
+  "ranking": [
+    {
+      "rank": 1,
+      "candidate_id": "r1",
+      "total_score": 0.8188,
+      "confidence": 0.8,
+      "disqualified": false,
+      "axis_scores": [
+        {
+          "axis": "cuisine",
+          "score": 0.8,
+          "status": "supported",
+          "reason": "Italian restaurant matches query",
+          "hard_constraint_violation": false
+        },
+        {
+          "axis": "budget",
+          "score": 0.9,
+          "status": "supported",
+          "reason": "Average 2500 yen within 3000 yen budget",
+          "hard_constraint_violation": false
+        },
+        {
+          "axis": "atmosphere",
+          "score": 0.85,
+          "status": "supported",
+          "reason": "Described as quiet and calm",
+          "hard_constraint_violation": false
+        },
+        {
+          "axis": "location",
+          "score": 0.0,
+          "status": "unknown",
+          "reason": "No address information provided"
+        },
+        {
+          "axis": "rating",
+          "score": 0.6,
+          "status": "supported",
+          "reason": "No explicit rating data, moderate default",
+          "hard_constraint_violation": false
+        }
+      ],
+      "strengths": [
+        "Quiet atmosphere matches preference",
+        "Within budget"
+      ],
+      "weaknesses": [
+        "No location details"
+      ],
+      "missing_information": [
+        "Exact address",
+        "Business hours"
+      ],
+      "risk_notes": [],
+      "summary_reason": "Good match: quiet Italian within budget, but location unknown"
+    },
+    {
+      "rank": 2,
+      "candidate_id": "r2",
+      "total_score": 0.5656,
+      "confidence": 0.8,
+      "disqualified": false,
+      "axis_scores": [
+        {
+          "axis": "cuisine",
+          "score": 0.5,
+          "status": "supported",
+          "reason": "Bar, not specifically Italian",
+          "hard_constraint_violation": false
+        },
+        {
+          "axis": "budget",
+          "score": 0.95,
+          "status": "supported",
+          "reason": "Average 2000 yen, well within 3000 yen budget",
+          "hard_constraint_violation": false
+        },
+        {
+          "axis": "atmosphere",
+          "score": 0.2,
+          "status": "conflict",
+          "reason": "Described as lively/noisy, user prefers quiet",
+          "hard_constraint_violation": false
+        },
+        {
+          "axis": "location",
+          "score": 0.0,
+          "status": "unknown",
+          "reason": "No address information provided"
+        },
+        {
+          "axis": "rating",
+          "score": 0.5,
+          "status": "supported",
+          "reason": "No explicit rating data",
+          "hard_constraint_violation": false
+        }
+      ],
+      "strengths": [
+        "Very affordable"
+      ],
+      "weaknesses": [
+        "Noisy atmosphere conflicts with quiet preference",
+        "Not specifically Italian"
+      ],
+      "missing_information": [
+        "Exact address",
+        "Business hours"
+      ],
+      "risk_notes": [],
+      "summary_reason": "Budget-friendly but atmosphere mismatch: noisy vs quiet preference"
+    }
+  ],
+  "needs_human_review": false,
+  "global_missing_information": [
+    "Exact address",
+    "Business hours"
+  ]
+}

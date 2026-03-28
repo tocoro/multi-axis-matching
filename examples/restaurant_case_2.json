@@ -1,0 +1,16 @@
+{
+  "request_id": "case2",
+  "user_query": "恵比寿で静かに話せるイタリアン。予算は3000円以内",
+  "candidates": [
+    {
+      "candidate_id": "c2_local",
+      "title": "Trattoria Vicino",
+      "description": "恵比寿駅徒歩3分のイタリアン。落ち着いた雰囲気。平均2800円"
+    },
+    {
+      "candidate_id": "c2_far",
+      "title": "Osteria Lontano",
+      "description": "中目黒のイタリアン。静かで雰囲気が良い。平均1500円"
+    }
+  ]
+}

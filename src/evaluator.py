@@ -9,7 +9,6 @@ import logging
 import os
 from pathlib import Path
 
-import anthropic
 import jsonschema
 
 logger = logging.getLogger(__name__)
@@ -42,23 +41,82 @@ def _parse_json_from_llm(raw: str) -> dict:
     return json.loads(text)
 
 
-def call_llm(system_prompt: str, user_message: str) -> dict:
-    """Call LLM and parse the JSON response."""
+def _call_anthropic(model: str, system_prompt: str, user_message: str) -> str:
+    import anthropic
     client = anthropic.Anthropic()
-    model = os.environ.get("EVAL_MODEL", "claude-sonnet-4-20250514")
-
-    logger.info("LLM call start  model=%s", model)
-    logger.debug("  system: %s", system_prompt[:80])
-    logger.debug("  user:   %s", user_message[:120])
-
     response = client.messages.create(
         model=model,
         max_tokens=2048,
         system=system_prompt,
         messages=[{"role": "user", "content": user_message}],
     )
+    return response.content[0].text
 
-    raw = response.content[0].text
+
+def _call_openai(model: str, system_prompt: str, user_message: str) -> str:
+    import openai
+    client = openai.OpenAI()
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ],
+    )
+    return response.choices[0].message.content
+
+
+def _call_gemini(model: str, system_prompt: str, user_message: str) -> str:
+    from google import genai
+    from google.genai import types
+    client = genai.Client()
+    response = client.models.generate_content(
+        model=model,
+        contents=user_message,
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+        ),
+    )
+    return response.text
+
+
+def _infer_provider(model: str) -> str:
+    if model.startswith("claude-"):
+        return "anthropic"
+    if model.startswith(("gpt-", "o1-", "o3-", "o4-", "chatgpt-")):
+        return "openai"
+    if model.startswith("gemini-"):
+        return "gemini"
+    raise ValueError(
+        f"Cannot infer provider from model name '{model}'. "
+        "Set EVAL_PROVIDER to 'anthropic', 'openai', or 'gemini'."
+    )
+
+
+_PROVIDERS = {
+    "anthropic": _call_anthropic,
+    "openai": _call_openai,
+    "gemini": _call_gemini,
+}
+
+
+def call_llm(system_prompt: str, user_message: str) -> dict:
+    """Call LLM and parse the JSON response.
+
+    Provider is determined by EVAL_PROVIDER env var, or inferred from
+    EVAL_MODEL prefix (claude-* → anthropic, gpt-*/o*- → openai, gemini-* → gemini).
+    """
+    model = os.environ.get("EVAL_MODEL", "claude-sonnet-4-6")
+    provider = os.environ.get("EVAL_PROVIDER") or _infer_provider(model)
+    call_fn = _PROVIDERS.get(provider)
+    if call_fn is None:
+        raise ValueError(f"Unknown provider: {provider!r}")
+
+    logger.info("LLM call start  provider=%s  model=%s", provider, model)
+    logger.debug("  system: %s", system_prompt[:80])
+    logger.debug("  user:   %s", user_message[:120])
+
+    raw = call_fn(model, system_prompt, user_message)
     logger.debug("LLM raw response: %s", raw)
 
     result = _parse_json_from_llm(raw)

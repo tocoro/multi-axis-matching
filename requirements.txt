@@ -1,3 +1,7 @@
-anthropic>=0.39.0
 jsonschema>=4.20.0
 pytest>=8.0.0
+
+# LLM providers — install the one(s) you use
+anthropic>=0.39.0
+openai>=1.0.0
+google-genai>=1.0.0
