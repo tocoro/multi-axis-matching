@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/request.schema.json",
+  "title": "EvaluationRequest",
+  "type": "object",
+  "required": ["request_id", "user_query", "candidates"],
+  "additionalProperties": false,
+  "properties": {
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "user_query": {
+      "type": "string",
+      "minLength": 1
+    },
+    "problem_type": {
+      "type": ["string", "null"],
+      "enum": [
+        "entertainment.music",
+        "local.restaurant",
+        "local.clinic",
+        "professional.legal",
+        "commerce.product",
+        null
+      ]
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "locale": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hard_constraints": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "soft_preferences": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "candidates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["candidate_id", "title"],
+        "additionalProperties": false,
+        "properties": {
+          "candidate_id": { "type": "string", "minLength": 1 },
+          "title": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" },
+          "structured_attributes": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "source_metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      }
+    }
+  }
+}
