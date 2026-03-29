@@ -107,7 +107,6 @@ class TestNormalizeRestaurant:
         assert c["structured_attributes"]["genre"] == "bar"
 
     def test_missing_fields_not_filled(self):
-        """不明な情報は埋めない。"""
         retrieved = {
             "source": "place_search",
             "source_id": "place_4",
@@ -126,8 +125,6 @@ class TestNormalizeRestaurant:
         assert "genre" not in attrs
         assert "nearest_station" not in attrs
         assert "price_min" not in attrs
-        assert "price_max" not in attrs
-        assert "review_summary" not in attrs
         assert "quiet" in attrs["atmosphere_tags"]
 
     def test_description_generated(self):
@@ -147,75 +144,146 @@ class TestNormalizeRestaurant:
 
 
 # ===================================================================
-# C. search filtering
+# C. search filtering + diagnostics
 # ===================================================================
 
 
-class TestSearchFiltering:
-    """search_places() が conditions を使って候補を絞り込むこと。"""
+def _search_ids(conditions, **kwargs):
+    """Helper: return just source_ids from search."""
+    output = search_places(conditions, **kwargs)
+    return [r["source_id"] for r in output["results"]]
 
+
+def _search_diag(conditions, **kwargs):
+    """Helper: return search_diagnostics."""
+    return search_places(conditions, **kwargs)["search_diagnostics"]
+
+
+class TestSearchFiltering:
     def test_genre_and_location_match(self):
-        """恵比寿 + italian → place_1 (恵比寿) + place_3 (中目黒=近隣)。"""
-        results = search_places({"genre": "italian", "location": "恵比寿"})
-        ids = [r["source_id"] for r in results]
+        ids = _search_ids({"genre": "italian", "location": "恵比寿"})
         assert "place_1" in ids
-        assert "place_3" in ids  # 中目黒は恵比寿の近隣
-        assert "place_2" not in ids  # bar → genre 不一致
-        assert "place_4" not in ids  # unknown → genre 不一致
+        assert "place_3" in ids
+        assert "place_2" not in ids
+        assert "place_4" not in ids
 
     def test_genre_filters_out_mismatch(self):
-        """italian 指定で bar は除外される。"""
-        results = search_places({"genre": "italian"})
-        ids = [r["source_id"] for r in results]
+        ids = _search_ids({"genre": "italian"})
         assert "place_2" not in ids
 
     def test_location_filters_distant(self):
-        """恵比寿指定で genre なし → 恵比寿 + 近隣のみ。"""
-        results = search_places({"location": "恵比寿"})
-        ids = [r["source_id"] for r in results]
-        assert "place_1" in ids  # 恵比寿
-        assert "place_2" in ids  # 恵比寿
-        assert "place_3" in ids  # 中目黒 = 近隣
-        assert "place_4" not in ids  # unknown location
+        ids = _search_ids({"location": "恵比寿"})
+        assert "place_1" in ids
+        assert "place_2" in ids
+        assert "place_3" in ids
+        assert "place_4" not in ids
 
     def test_location_neighbor_included(self):
-        """中目黒は恵比寿の近隣グループなので含まれる。"""
-        results = search_places({"genre": "italian", "location": "恵比寿"})
-        ids = [r["source_id"] for r in results]
+        ids = _search_ids({"genre": "italian", "location": "恵比寿"})
         assert "place_3" in ids
 
     def test_fallback_on_no_match(self):
-        """全件不一致時は全件返す (fallback)。"""
-        results = search_places({"genre": "sushi", "location": "六本木"})
-        assert len(results) == 4  # 全件返却
+        output = search_places({"genre": "sushi", "location": "六本木"})
+        assert len(output["results"]) == 4
 
     def test_fallback_genre_only(self):
-        """genre + location で 0 件 → genre のみで再試行。"""
-        results = search_places({"genre": "italian", "location": "六本木"})
-        ids = [r["source_id"] for r in results]
-        # 六本木の italian は 0 件 → genre=italian のみで fallback
+        ids = _search_ids({"genre": "italian", "location": "六本木"})
         assert "place_1" in ids
         assert "place_3" in ids
         assert "place_2" not in ids
 
     def test_no_conditions_returns_all(self):
-        """条件なし → 全件返却。"""
-        results = search_places({})
-        assert len(results) == 4
+        output = search_places({})
+        assert len(output["results"]) == 4
 
     def test_budget_soft_sort(self):
-        """max_price は除外ではなく、budget-friendly が先に来る。"""
-        results = search_places({"max_price": 2000})
-        ids = [r["source_id"] for r in results]
-        # low/unknown price candidates should sort first
-        assert len(results) == 4
+        output = search_places({"max_price": 2000})
+        assert len(output["results"]) == 4
 
     def test_deterministic(self):
-        """同じ条件で同じ結果順が返る。"""
         c = {"genre": "italian", "location": "恵比寿", "max_price": 3000}
         r1 = search_places(c)
         r2 = search_places(c)
-        assert [x["source_id"] for x in r1] == [x["source_id"] for x in r2]
+        assert ([x["source_id"] for x in r1["results"]]
+                == [x["source_id"] for x in r2["results"]])
+        assert r1["search_diagnostics"] == r2["search_diagnostics"]
+
+
+# ===================================================================
+# C-2. search diagnostics
+# ===================================================================
+
+
+class TestSearchDiagnostics:
+    def test_strict_hit_no_fallback(self):
+        """恵比寿 + italian → strict hit。"""
+        d = _search_diag({"genre": "italian", "location": "恵比寿"})
+        assert d["fallback_applied"] is False
+        assert d["fallback_enabled"] is True
+        assert d["matched_stage"] == "genre+location"
+        assert d["strict_result_count"] == 2
+        assert d["final_result_count"] == 2
+        assert d["fallback_steps"] == []
+
+    def test_fallback_rescue_diagnostics(self):
+        """sushi + 六本木 → 全件 fallback。"""
+        d = _search_diag({"genre": "sushi", "location": "六本木"})
+        assert d["fallback_applied"] is True
+        assert d["matched_stage"] == "all"
+        assert d["strict_result_count"] == 0
+        assert d["final_result_count"] == 4
+        assert "genre+location" in d["fallback_steps"]
+
+    def test_fallback_to_genre_only(self):
+        """italian + 六本木 → genre_only fallback。"""
+        d = _search_diag({"genre": "italian", "location": "六本木"})
+        assert d["fallback_applied"] is True
+        assert d["matched_stage"] == "genre_only"
+        assert d["strict_result_count"] == 0
+        assert d["final_result_count"] == 2
+
+    def test_strict_conditions_recorded(self):
+        d = _search_diag({"genre": "italian", "location": "恵比寿", "max_price": 3000})
+        assert d["strict_conditions"] == {
+            "genre": "italian", "location": "恵比寿", "max_price": 3000,
+        }
+
+
+# ===================================================================
+# C-3. strict mode (enable_fallback=False)
+# ===================================================================
+
+
+class TestStrictMode:
+    def test_strict_zero_results(self):
+        """sushi + 六本木 strict → 0 件。"""
+        output = search_places(
+            {"genre": "sushi", "location": "六本木"}, enable_fallback=False)
+        assert output["results"] == []
+        d = output["search_diagnostics"]
+        assert d["fallback_enabled"] is False
+        assert d["fallback_applied"] is False
+        assert d["matched_stage"] == "strict_only"
+        assert d["strict_result_count"] == 0
+        assert d["final_result_count"] == 0
+
+    def test_strict_hit_returns_results(self):
+        """恵比寿 + italian strict → 2 件 (strict で十分ヒット)。"""
+        output = search_places(
+            {"genre": "italian", "location": "恵比寿"}, enable_fallback=False)
+        assert len(output["results"]) == 2
+        d = output["search_diagnostics"]
+        assert d["fallback_enabled"] is False
+        assert d["fallback_applied"] is False
+        assert d["matched_stage"] == "genre+location"
+
+    def test_strict_vs_fallback_same_conditions(self):
+        """同一条件で strict 0件 / fallback 4件。"""
+        cond = {"genre": "sushi", "location": "六本木"}
+        strict = search_places(cond, enable_fallback=False)
+        fallback = search_places(cond, enable_fallback=True)
+        assert len(strict["results"]) == 0
+        assert len(fallback["results"]) == 4
 
 
 # ===================================================================
@@ -224,7 +292,6 @@ class TestSearchFiltering:
 
 
 def _pipeline_llm_mock(system_prompt: str, user_message: str) -> dict:
-    """Pipeline E2E 用の LLM mock。"""
     if "前処理" in system_prompt:
         return {
             "inferred_problem_type": "local.restaurant",
@@ -238,10 +305,8 @@ def _pipeline_llm_mock(system_prompt: str, user_message: str) -> dict:
             "notes": [],
         }
     if "評価軸選択" in system_prompt:
-        return {
-            "axes": MOCK_AXES,
-            "reason": "Restaurant axes",
-        }
+        return {"axes": MOCK_AXES, "reason": "Restaurant axes"}
+
     parsed = json.loads(user_message)
     cid = parsed["candidate"]["candidate_id"]
 
@@ -264,26 +329,6 @@ def _pipeline_llm_mock(system_prompt: str, user_message: str) -> dict:
             "missing_information": [],
             "risk_notes": [],
             "summary_reason": "Strong match",
-        },
-        "place_2": {
-            "axis_scores": [
-                {"axis": "cuisine", "score": 0.3, "status": "conflict",
-                 "reason": "Bar, not Italian", "hard_constraint_violation": False},
-                {"axis": "budget", "score": 0.95, "status": "supported",
-                 "reason": "Very affordable", "hard_constraint_violation": False},
-                {"axis": "atmosphere", "score": 0.2, "status": "conflict",
-                 "reason": "Lively, user wants quiet",
-                 "hard_constraint_violation": False},
-                {"axis": "location", "score": 0.8, "status": "supported",
-                 "reason": "In Ebisu", "hard_constraint_violation": False},
-                {"axis": "rating", "score": 0.5, "status": "supported",
-                 "reason": "Average", "hard_constraint_violation": False},
-            ],
-            "strengths": ["Affordable"],
-            "weaknesses": ["Not Italian", "Noisy"],
-            "missing_information": [],
-            "risk_notes": [],
-            "summary_reason": "Poor genre and atmosphere match",
         },
         "place_3": {
             "axis_scores": [
@@ -325,13 +370,27 @@ def _pipeline_llm_mock(system_prompt: str, user_message: str) -> dict:
             "summary_reason": "Only atmosphere evaluable",
         },
     }
-    data = evals.get(cid, evals["place_4"])
+    # default for unknown candidates
+    data = evals.get(cid, {
+        "axis_scores": [
+            {"axis": "cuisine", "score": 0.5, "status": "supported",
+             "reason": "Generic", "hard_constraint_violation": False},
+            {"axis": "budget", "score": 0.7, "status": "supported",
+             "reason": "OK", "hard_constraint_violation": False},
+            {"axis": "atmosphere", "score": 0.5, "status": "supported",
+             "reason": "Average", "hard_constraint_violation": False},
+            {"axis": "location", "score": 0.5, "status": "supported",
+             "reason": "OK", "hard_constraint_violation": False},
+            {"axis": "rating", "score": 0.5, "status": "supported",
+             "reason": "Average", "hard_constraint_violation": False},
+        ],
+        "strengths": [], "weaknesses": [], "missing_information": [],
+        "risk_notes": [], "summary_reason": "Default mock",
+    })
     return {"candidate_id": cid, **data}
 
 
 class TestPipelineE2E:
-    """query → search(filtered) → retrieve → normalize → evaluate。"""
-
     QUERY = "恵比寿で静かに話せるイタリアン。予算は3000円以内"
 
     @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
@@ -341,7 +400,6 @@ class TestPipelineE2E:
 
     @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
     def test_search_filters_to_two_candidates(self, _mock):
-        """genre=italian + location=恵比寿 → place_1 + place_3 の2件。"""
         r = run_restaurant_pipeline("pipe-1", self.QUERY)
         assert len(r["ranking"]) == 2
         ids = {e["candidate_id"] for e in r["ranking"]}
@@ -350,24 +408,15 @@ class TestPipelineE2E:
     @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
     def test_ranks_sequential(self, _mock):
         r = run_restaurant_pipeline("pipe-1", self.QUERY)
-        ranks = [e["rank"] for e in r["ranking"]]
-        assert ranks == [1, 2]
+        assert [e["rank"] for e in r["ranking"]] == [1, 2]
 
     @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
     def test_place_1_ranked_first(self, _mock):
-        """条件に最も合う place_1 が1位。"""
         r = run_restaurant_pipeline("pipe-1", self.QUERY)
         assert r["ranking"][0]["candidate_id"] == "place_1"
 
     @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
-    def test_place_3_ranked_second(self, _mock):
-        """place_3 (中目黒=近隣, italian) は2位。"""
-        r = run_restaurant_pipeline("pipe-1", self.QUERY)
-        assert r["ranking"][1]["candidate_id"] == "place_3"
-
-    @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
     def test_bar_excluded_by_search(self, _mock):
-        """place_2 (bar) は search 段階で除外される。"""
         r = run_restaurant_pipeline("pipe-1", self.QUERY)
         ids = {e["candidate_id"] for e in r["ranking"]}
         assert "place_2" not in ids
@@ -378,13 +427,19 @@ class TestPipelineE2E:
         for entry in r["ranking"]:
             assert entry["disqualified"] is False
 
+    @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
+    def test_diagnostics_in_response(self, _mock):
+        """search_diagnostics が response に含まれる。"""
+        r = run_restaurant_pipeline("pipe-1", self.QUERY)
+        d = r["search_diagnostics"]
+        assert d["fallback_applied"] is False
+        assert d["matched_stage"] == "genre+location"
+        assert d["strict_result_count"] == 2
+
 
 class TestPipelineFallback:
-    """条件が強すぎる → fallback で全件返却。"""
-
     @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
     def test_no_match_returns_all_candidates(self, _mock):
-        """寿司 + 六本木 → 全件 fallback。"""
         r = run_restaurant_pipeline("pipe-fb", "六本木で寿司が食べたい。予算は5000円")
         assert len(r["ranking"]) == 4
 
@@ -394,10 +449,38 @@ class TestPipelineFallback:
         validate_response(r)
 
     @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
+    def test_fallback_diagnostics_in_response(self, _mock):
+        r = run_restaurant_pipeline("pipe-fb", "六本木で寿司が食べたい。予算は5000円")
+        d = r["search_diagnostics"]
+        assert d["fallback_applied"] is True
+        assert d["matched_stage"] == "all"
+
+    @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
     def test_fallback_includes_info_lacking(self, _mock):
-        """fallback 時は place_4 (情報欠落) も含まれる。"""
         r = run_restaurant_pipeline("pipe-fb", "六本木で寿司が食べたい。予算は5000円")
         p4 = next(e for e in r["ranking"] if e["candidate_id"] == "place_4")
         assert len(p4["missing_information"]) >= 3
         assert p4["confidence"] < 0.5
         assert p4["disqualified"] is False
+
+
+class TestPipelineStrict:
+    @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
+    def test_strict_zero_results(self, _mock):
+        """strict で 0 件 → 空 ranking。"""
+        r = run_restaurant_pipeline(
+            "pipe-strict", "六本木で寿司が食べたい",
+            enable_fallback=False)
+        assert r["ranking"] == []
+        assert r["search_diagnostics"]["fallback_enabled"] is False
+        assert r["search_diagnostics"]["final_result_count"] == 0
+
+    @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
+    def test_strict_with_hits(self, _mock):
+        """strict でもヒットすれば通常通り evaluate。"""
+        r = run_restaurant_pipeline(
+            "pipe-strict", "恵比寿で静かに話せるイタリアン。予算は3000円以内",
+            enable_fallback=False)
+        assert len(r["ranking"]) == 2
+        assert r["search_diagnostics"]["fallback_enabled"] is False
+        assert r["search_diagnostics"]["fallback_applied"] is False

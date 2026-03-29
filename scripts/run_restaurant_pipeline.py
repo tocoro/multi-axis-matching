@@ -117,6 +117,8 @@ def main() -> int:
                        help="Use mock LLM (default)")
     group.add_argument("--live", action="store_true",
                        help="Use real LLM (requires API key)")
+    parser.add_argument("--strict", action="store_true",
+                        help="Disable fallback (strict search only)")
     parser.add_argument("--log-level", default="WARNING",
                         choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     parser.add_argument("--input", type=str, default=None,
@@ -134,11 +136,15 @@ def main() -> int:
     request_id = data["request_id"]
     user_query = data["user_query"]
 
+    enable_fallback = not args.strict
+
     if args.live:
-        response = run_restaurant_pipeline(request_id, user_query)
+        response = run_restaurant_pipeline(
+            request_id, user_query, enable_fallback=enable_fallback)
     else:
         with patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock):
-            response = run_restaurant_pipeline(request_id, user_query)
+            response = run_restaurant_pipeline(
+                request_id, user_query, enable_fallback=enable_fallback)
 
     json.dump(response, sys.stdout, ensure_ascii=False, indent=2)
     sys.stdout.write("\n")

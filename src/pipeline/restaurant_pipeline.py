@@ -11,17 +11,24 @@ from src.services.infer_search_conditions import infer_search_conditions
 logger = logging.getLogger(__name__)
 
 
-def run_restaurant_pipeline(request_id: str, user_query: str) -> dict:
+def run_restaurant_pipeline(
+    request_id: str,
+    user_query: str,
+    *,
+    enable_fallback: bool = True,
+) -> dict:
     """Restaurant パイプラインを実行する。
 
     Args:
         request_id: リクエスト識別子
         user_query: ユーザーの自然文クエリ
+        enable_fallback: False で strict 検索 (fallback なし)
 
     Returns:
-        evaluate() の response schema に準拠した dict。
+        evaluate() の response に search_diagnostics を付加した dict。
     """
-    logger.info("=== Pipeline started: %s ===", request_id)
+    logger.info("=== Pipeline started: %s (fallback=%s) ===",
+                request_id, enable_fallback)
 
     # --- Stage 1: query understanding ---
     logger.info("[1/5] Query understanding")
@@ -35,11 +42,24 @@ def run_restaurant_pipeline(request_id: str, user_query: str) -> dict:
     # --- Stage 2: search ---
     logger.info("[2/5] Search")
     try:
-        search_results = search_places(conditions)
+        search_output = search_places(conditions, enable_fallback=enable_fallback)
     except Exception:
         logger.exception("Failed at stage 2: search")
         raise
-    logger.info("  found %d candidates", len(search_results))
+    search_results = search_output["results"]
+    search_diagnostics = search_output["search_diagnostics"]
+    logger.info("  found %d candidates (stage=%s, fallback=%s)",
+                len(search_results),
+                search_diagnostics["matched_stage"],
+                search_diagnostics["fallback_applied"])
+
+    if not search_results:
+        logger.warning("Search returned 0 candidates — returning empty response")
+        return {
+            "request_id": request_id,
+            "search_diagnostics": search_diagnostics,
+            "ranking": [],
+        }
 
     # --- Stage 3: retrieve ---
     logger.info("[3/5] Retrieve")
@@ -77,6 +97,9 @@ def run_restaurant_pipeline(request_id: str, user_query: str) -> dict:
     except Exception:
         logger.exception("Failed at stage 5: evaluate")
         raise
+
+    # Attach search diagnostics to response
+    response["search_diagnostics"] = search_diagnostics
 
     logger.info("=== Pipeline complete: %d candidates ranked ===",
                 len(response["ranking"]))

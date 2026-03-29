@@ -3,7 +3,8 @@
 フィルタ方針:
   Hard filter — genre, location が明確に不一致なら除外
   Soft filter — max_price は優先度付けに使用 (除外しない)
-  Fallback   — 0 件時は段階的に条件緩和
+  Fallback   — 0 件時は段階的に条件緩和 (enable_fallback=True のとき)
+  Strict     — enable_fallback=False なら strict 条件のみ。0 件ならそのまま 0 件
 """
 
 import logging
@@ -60,7 +61,6 @@ _MOCK_PLACES = [
 
 
 def _matches_genre(tags: dict, genre: str | None) -> bool:
-    """genre が一致するか。unknown タグは不一致扱い。"""
     if genre is None:
         return True
     tag_genre = tags.get("genre", "unknown")
@@ -70,7 +70,6 @@ def _matches_genre(tags: dict, genre: str | None) -> bool:
 
 
 def _matches_location(tags: dict, location: str | None) -> bool:
-    """location が一致 or 近隣エリアか。unknown タグは不一致扱い。"""
     if location is None:
         return True
     tag_loc = tags.get("location", "unknown")
@@ -78,13 +77,11 @@ def _matches_location(tags: dict, location: str | None) -> bool:
         return False
     if tag_loc == location:
         return True
-    # 近隣エリアチェック
     neighbors = _STATION_GROUPS.get(location, set())
     return tag_loc in neighbors
 
 
 def _within_budget(tags: dict, max_price: int | None) -> bool:
-    """price_level が予算内か。unknown は判定不能 → True (除外しない)。"""
     if max_price is None:
         return True
     price_level = tags.get("price_level", "unknown")
@@ -105,47 +102,95 @@ def _format_result(place: dict) -> dict:
     }
 
 
-def search_places(conditions: dict) -> list[dict]:
+def search_places(conditions: dict, *, enable_fallback: bool = True) -> dict:
     """Mock search: 条件に基づいて候補を絞り込んで返す。
 
-    Filtering strategy:
-      1. genre + location (hard) で絞る
-      2. 0 件なら genre のみで絞る
-      3. 0 件なら location のみで絞る
-      4. 0 件なら全件返す
-
-    max_price は hard filter ではなく、結果内のソート優先度に使う。
+    Returns:
+        {
+            "results": [...],
+            "search_diagnostics": {
+                "strict_conditions": {...},
+                "fallback_enabled": bool,
+                "fallback_applied": bool,
+                "matched_stage": str,
+                "fallback_steps": [...],
+                "strict_result_count": int,
+                "final_result_count": int,
+            }
+        }
     """
     genre = conditions.get("genre")
     location = conditions.get("location")
     max_price = conditions.get("max_price")
 
-    # --- Stage 1: genre + location ---
+    strict_conditions = {
+        k: v for k, v in [
+            ("genre", genre), ("location", location), ("max_price", max_price),
+        ] if v is not None
+    }
+
+    fallback_steps: list[str] = []
+
+    # --- Stage 1: genre + location (strict) ---
     results = [
         p for p in _MOCK_PLACES
         if _matches_genre(p["_tags"], genre) and _matches_location(p["_tags"], location)
     ]
-    filter_desc = f"genre={genre} + location={location}"
+    strict_result_count = len(results)
+    matched_stage = "genre+location"
 
-    # --- Fallback stages ---
-    if not results and genre:
-        results = [p for p in _MOCK_PLACES if _matches_genre(p["_tags"], genre)]
-        filter_desc = f"genre={genre} only (location relaxed)"
+    if results:
+        # Strict hit — no fallback needed
+        pass
+    elif not enable_fallback:
+        # Strict mode: return empty
+        matched_stage = "strict_only"
+    else:
+        # --- Fallback ---
+        fallback_steps.append("genre+location")
 
-    if not results and location:
-        results = [p for p in _MOCK_PLACES if _matches_location(p["_tags"], location)]
-        filter_desc = f"location={location} only (genre relaxed)"
+        # Stage 2: genre only
+        if genre:
+            results = [p for p in _MOCK_PLACES if _matches_genre(p["_tags"], genre)]
+        if results:
+            matched_stage = "genre_only"
+        else:
+            fallback_steps.append("genre_only")
 
-    if not results:
-        results = list(_MOCK_PLACES)
-        filter_desc = "fallback: all candidates"
+            # Stage 3: location only
+            if location:
+                results = [p for p in _MOCK_PLACES if _matches_location(p["_tags"], location)]
+            if results:
+                matched_stage = "location_only"
+            else:
+                fallback_steps.append("location_only")
+
+                # Stage 4: all
+                results = list(_MOCK_PLACES)
+                matched_stage = "all"
+                fallback_steps.append("all")
 
     # --- Soft sort: budget-friendly first ---
-    if max_price is not None:
+    if max_price is not None and results:
         results.sort(key=lambda p: (
             0 if _within_budget(p["_tags"], max_price) else 1
         ))
 
+    fallback_applied = len(fallback_steps) > 0
     formatted = [_format_result(p) for p in results]
-    logger.info("Search [%s]: %d candidates", filter_desc, len(formatted))
-    return formatted
+
+    diagnostics = {
+        "strict_conditions": strict_conditions,
+        "fallback_enabled": enable_fallback,
+        "fallback_applied": fallback_applied,
+        "matched_stage": matched_stage,
+        "fallback_steps": fallback_steps,
+        "strict_result_count": strict_result_count,
+        "final_result_count": len(formatted),
+    }
+
+    logger.info(
+        "Search [%s]: strict=%d final=%d fallback=%s",
+        matched_stage, strict_result_count, len(formatted), fallback_applied,
+    )
+    return {"results": formatted, "search_diagnostics": diagnostics}

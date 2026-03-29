@@ -125,6 +125,13 @@ mock search は条件に応じて候補を絞り込みます:
 - **Hard filter**: genre 不一致、location 不一致 (近隣エリアは許容) を除外
 - **Soft filter**: max_price は除外ではなく優先度ソートに使用
 - **Fallback**: 0 件時は `genre+location → genre のみ → location のみ → 全件` の順で条件緩和
+- **Strict mode**: `--strict` で fallback を無効化。0 件ならそのまま 0 件を返す
+- **Diagnostics**: `search_diagnostics` で fallback の有無・段階・件数を追跡可能
+
+```bash
+# Strict モード (fallback なし)
+uv run scripts/run_restaurant_pipeline.py --mock --strict
+```
 
 ### Pipeline 実行
 

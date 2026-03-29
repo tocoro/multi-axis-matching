@@ -92,6 +92,10 @@
       "type": "array",
       "items": { "type": "string" }
     },
-    "needs_human_review": { "type": "boolean" }
+    "needs_human_review": { "type": "boolean" },
+    "search_diagnostics": {
+      "type": "object",
+      "additionalProperties": true
+    }
   }
 }
