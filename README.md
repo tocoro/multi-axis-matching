@@ -107,18 +107,24 @@ uv run --with anthropic --with jsonschema --with pytest pytest tests/ -v
 ## Restaurant 候補収集パイプライン
 
 query → search → retrieve → normalize → evaluate の流れで動作します。
-現時点では search / retrieve は mock 実装です。
+現時点では search / retrieve は mock 実装です (実 API 未接続)。
 
 ```
 user query
   ↓  query understanding (ルールベース条件抽出)
-  ↓  search (mock: 固定候補プール)
+  ↓  search (mock: 条件ベースフィルタ + fallback)
   ↓  retrieve (mock: source_id → 詳細レコード)
   ↓  normalize (raw_record → candidate 形式)
   ↓  evaluate (既存の多軸評価)
   ↓
 ranking JSON
 ```
+
+### Search filtering
+mock search は条件に応じて候補を絞り込みます:
+- **Hard filter**: genre 不一致、location 不一致 (近隣エリアは許容) を除外
+- **Soft filter**: max_price は除外ではなく優先度ソートに使用
+- **Fallback**: 0 件時は `genre+location → genre のみ → location のみ → 全件` の順で条件緩和
 
 ### Pipeline 実行
 

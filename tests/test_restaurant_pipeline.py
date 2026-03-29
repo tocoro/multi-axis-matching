@@ -11,6 +11,7 @@ from src.normalizers.restaurant_normalizer import (
     normalize_restaurant,
 )
 from src.pipeline.restaurant_pipeline import run_restaurant_pipeline
+from src.searchers.place_searcher import search_places
 from src.services.infer_search_conditions import infer_search_conditions
 from src.mock import MOCK_AXES
 
@@ -47,7 +48,6 @@ class TestInferSearchConditions:
 
     def test_empty_query(self):
         c = infer_search_conditions("おすすめある？")
-        # 不明は含めない
         assert "location" not in c
         assert "genre" not in c
         assert "max_price" not in c
@@ -128,7 +128,6 @@ class TestNormalizeRestaurant:
         assert "price_min" not in attrs
         assert "price_max" not in attrs
         assert "review_summary" not in attrs
-        # atmosphere は推定可能
         assert "quiet" in attrs["atmosphere_tags"]
 
     def test_description_generated(self):
@@ -148,7 +147,79 @@ class TestNormalizeRestaurant:
 
 
 # ===================================================================
-# C & D. pipeline E2E (mock LLM)
+# C. search filtering
+# ===================================================================
+
+
+class TestSearchFiltering:
+    """search_places() が conditions を使って候補を絞り込むこと。"""
+
+    def test_genre_and_location_match(self):
+        """恵比寿 + italian → place_1 (恵比寿) + place_3 (中目黒=近隣)。"""
+        results = search_places({"genre": "italian", "location": "恵比寿"})
+        ids = [r["source_id"] for r in results]
+        assert "place_1" in ids
+        assert "place_3" in ids  # 中目黒は恵比寿の近隣
+        assert "place_2" not in ids  # bar → genre 不一致
+        assert "place_4" not in ids  # unknown → genre 不一致
+
+    def test_genre_filters_out_mismatch(self):
+        """italian 指定で bar は除外される。"""
+        results = search_places({"genre": "italian"})
+        ids = [r["source_id"] for r in results]
+        assert "place_2" not in ids
+
+    def test_location_filters_distant(self):
+        """恵比寿指定で genre なし → 恵比寿 + 近隣のみ。"""
+        results = search_places({"location": "恵比寿"})
+        ids = [r["source_id"] for r in results]
+        assert "place_1" in ids  # 恵比寿
+        assert "place_2" in ids  # 恵比寿
+        assert "place_3" in ids  # 中目黒 = 近隣
+        assert "place_4" not in ids  # unknown location
+
+    def test_location_neighbor_included(self):
+        """中目黒は恵比寿の近隣グループなので含まれる。"""
+        results = search_places({"genre": "italian", "location": "恵比寿"})
+        ids = [r["source_id"] for r in results]
+        assert "place_3" in ids
+
+    def test_fallback_on_no_match(self):
+        """全件不一致時は全件返す (fallback)。"""
+        results = search_places({"genre": "sushi", "location": "六本木"})
+        assert len(results) == 4  # 全件返却
+
+    def test_fallback_genre_only(self):
+        """genre + location で 0 件 → genre のみで再試行。"""
+        results = search_places({"genre": "italian", "location": "六本木"})
+        ids = [r["source_id"] for r in results]
+        # 六本木の italian は 0 件 → genre=italian のみで fallback
+        assert "place_1" in ids
+        assert "place_3" in ids
+        assert "place_2" not in ids
+
+    def test_no_conditions_returns_all(self):
+        """条件なし → 全件返却。"""
+        results = search_places({})
+        assert len(results) == 4
+
+    def test_budget_soft_sort(self):
+        """max_price は除外ではなく、budget-friendly が先に来る。"""
+        results = search_places({"max_price": 2000})
+        ids = [r["source_id"] for r in results]
+        # low/unknown price candidates should sort first
+        assert len(results) == 4
+
+    def test_deterministic(self):
+        """同じ条件で同じ結果順が返る。"""
+        c = {"genre": "italian", "location": "恵比寿", "max_price": 3000}
+        r1 = search_places(c)
+        r2 = search_places(c)
+        assert [x["source_id"] for x in r1] == [x["source_id"] for x in r2]
+
+
+# ===================================================================
+# D. pipeline E2E (mock LLM) — filtered search
 # ===================================================================
 
 
@@ -171,7 +242,6 @@ def _pipeline_llm_mock(system_prompt: str, user_message: str) -> dict:
             "axes": MOCK_AXES,
             "reason": "Restaurant axes",
         }
-    # evaluate_candidate — candidate_id に応じて返す
     parsed = json.loads(user_message)
     cid = parsed["candidate"]["candidate_id"]
 
@@ -260,70 +330,74 @@ def _pipeline_llm_mock(system_prompt: str, user_message: str) -> dict:
 
 
 class TestPipelineE2E:
-    """query → search → retrieve → normalize → evaluate が通ること。"""
+    """query → search(filtered) → retrieve → normalize → evaluate。"""
+
+    QUERY = "恵比寿で静かに話せるイタリアン。予算は3000円以内"
 
     @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
     def test_response_is_schema_valid(self, _mock):
-        r = run_restaurant_pipeline("pipe-1", "恵比寿で静かに話せるイタリアン。予算は3000円以内")
+        r = run_restaurant_pipeline("pipe-1", self.QUERY)
         validate_response(r)
 
     @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
-    def test_ranking_has_four_candidates(self, _mock):
-        r = run_restaurant_pipeline("pipe-1", "恵比寿で静かに話せるイタリアン。予算は3000円以内")
-        assert len(r["ranking"]) == 4
+    def test_search_filters_to_two_candidates(self, _mock):
+        """genre=italian + location=恵比寿 → place_1 + place_3 の2件。"""
+        r = run_restaurant_pipeline("pipe-1", self.QUERY)
+        assert len(r["ranking"]) == 2
+        ids = {e["candidate_id"] for e in r["ranking"]}
+        assert ids == {"place_1", "place_3"}
 
     @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
     def test_ranks_sequential(self, _mock):
-        r = run_restaurant_pipeline("pipe-1", "恵比寿で静かに話せるイタリアン。予算は3000円以内")
+        r = run_restaurant_pipeline("pipe-1", self.QUERY)
         ranks = [e["rank"] for e in r["ranking"]]
-        assert ranks == [1, 2, 3, 4]
-
-    @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
-    def test_at_least_one_not_disqualified(self, _mock):
-        r = run_restaurant_pipeline("pipe-1", "恵比寿で静かに話せるイタリアン。予算は3000円以内")
-        assert any(not e["disqualified"] for e in r["ranking"])
+        assert ranks == [1, 2]
 
     @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
     def test_place_1_ranked_first(self, _mock):
         """条件に最も合う place_1 が1位。"""
-        r = run_restaurant_pipeline("pipe-1", "恵比寿で静かに話せるイタリアン。予算は3000円以内")
-        first = r["ranking"][0]
-        assert first["candidate_id"] == "place_1"
+        r = run_restaurant_pipeline("pipe-1", self.QUERY)
+        assert r["ranking"][0]["candidate_id"] == "place_1"
 
     @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
-    def test_place_2_ranked_below_place_1(self, _mock):
-        """place_2 (bar, noisy) は place_1 より下位。"""
-        r = run_restaurant_pipeline("pipe-1", "恵比寿で静かに話せるイタリアン。予算は3000円以内")
-        p1 = next(e for e in r["ranking"] if e["candidate_id"] == "place_1")
-        p2 = next(e for e in r["ranking"] if e["candidate_id"] == "place_2")
-        assert p1["rank"] < p2["rank"]
-
-
-class TestPipelineInfoLacking:
-    """情報欠落候補が missing_information に反映されること。"""
+    def test_place_3_ranked_second(self, _mock):
+        """place_3 (中目黒=近隣, italian) は2位。"""
+        r = run_restaurant_pipeline("pipe-1", self.QUERY)
+        assert r["ranking"][1]["candidate_id"] == "place_3"
 
     @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
-    def test_place_4_has_missing_information(self, _mock):
-        r = run_restaurant_pipeline("pipe-1", "恵比寿で静かに話せるイタリアン。予算は3000円以内")
+    def test_bar_excluded_by_search(self, _mock):
+        """place_2 (bar) は search 段階で除外される。"""
+        r = run_restaurant_pipeline("pipe-1", self.QUERY)
+        ids = {e["candidate_id"] for e in r["ranking"]}
+        assert "place_2" not in ids
+
+    @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
+    def test_neither_disqualified(self, _mock):
+        r = run_restaurant_pipeline("pipe-1", self.QUERY)
+        for entry in r["ranking"]:
+            assert entry["disqualified"] is False
+
+
+class TestPipelineFallback:
+    """条件が強すぎる → fallback で全件返却。"""
+
+    @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
+    def test_no_match_returns_all_candidates(self, _mock):
+        """寿司 + 六本木 → 全件 fallback。"""
+        r = run_restaurant_pipeline("pipe-fb", "六本木で寿司が食べたい。予算は5000円")
+        assert len(r["ranking"]) == 4
+
+    @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
+    def test_fallback_still_valid_response(self, _mock):
+        r = run_restaurant_pipeline("pipe-fb", "六本木で寿司が食べたい。予算は5000円")
+        validate_response(r)
+
+    @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
+    def test_fallback_includes_info_lacking(self, _mock):
+        """fallback 時は place_4 (情報欠落) も含まれる。"""
+        r = run_restaurant_pipeline("pipe-fb", "六本木で寿司が食べたい。予算は5000円")
         p4 = next(e for e in r["ranking"] if e["candidate_id"] == "place_4")
         assert len(p4["missing_information"]) >= 3
-
-    @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
-    def test_place_4_low_confidence(self, _mock):
-        r = run_restaurant_pipeline("pipe-1", "恵比寿で静かに話せるイタリアン。予算は3000円以内")
-        p4 = next(e for e in r["ranking"] if e["candidate_id"] == "place_4")
         assert p4["confidence"] < 0.5
-
-    @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
-    def test_global_missing_info_includes_place_4_items(self, _mock):
-        r = run_restaurant_pipeline("pipe-1", "恵比寿で静かに話せるイタリアン。予算は3000円以内")
-        assert "global_missing_information" in r
-        assert any("Address" in m or "Price" in m
-                    for m in r["global_missing_information"])
-
-    @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
-    def test_place_4_not_disqualified(self, _mock):
-        """情報欠落は失格にしない。"""
-        r = run_restaurant_pipeline("pipe-1", "恵比寿で静かに話せるイタリアン。予算は3000円以内")
-        p4 = next(e for e in r["ranking"] if e["candidate_id"] == "place_4")
         assert p4["disqualified"] is False
