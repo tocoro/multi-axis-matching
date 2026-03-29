@@ -484,3 +484,59 @@ class TestPipelineStrict:
         assert len(r["ranking"]) == 2
         assert r["search_diagnostics"]["fallback_enabled"] is False
         assert r["search_diagnostics"]["fallback_applied"] is False
+
+
+class TestAdapterInjection:
+    """Pipeline が注入された adapter を使うこと。"""
+
+    @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
+    def test_explicit_mock_adapter_works(self, _mock):
+        """明示的に MockPlaceSearcher/Retriever を渡しても同じ結果。"""
+        from src.adapters.places import MockPlaceSearcher, MockPlaceRetriever
+        r = run_restaurant_pipeline(
+            "pipe-inject", "恵比寿で静かに話せるイタリアン。予算は3000円以内",
+            place_searcher=MockPlaceSearcher(),
+            place_retriever=MockPlaceRetriever(),
+        )
+        assert len(r["ranking"]) == 2
+        assert r["ranking"][0]["candidate_id"] == "place_1"
+        assert "search_diagnostics" in r
+
+    @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
+    def test_custom_searcher_is_used(self, _mock):
+        """カスタム searcher を注入すると、そちらが使われる。"""
+
+        class FixedSearcher:
+            def search_places(self, conditions, *, enable_fallback=True):
+                return {
+                    "results": [
+                        {"source": "custom", "source_id": "place_1",
+                         "title": "Custom", "snippet": "test"},
+                    ],
+                    "search_diagnostics": {
+                        "strict_conditions": {},
+                        "fallback_enabled": enable_fallback,
+                        "fallback_applied": False,
+                        "matched_stage": "custom",
+                        "fallback_steps": [],
+                        "strict_result_count": 1,
+                        "final_result_count": 1,
+                    },
+                }
+
+        r = run_restaurant_pipeline(
+            "pipe-custom", "恵比寿で静かに話せるイタリアン。予算は3000円以内",
+            place_searcher=FixedSearcher(),
+        )
+        assert len(r["ranking"]) == 1
+        assert r["search_diagnostics"]["matched_stage"] == "custom"
+
+    def test_google_places_stub_raises(self):
+        """GooglePlacesSearcher/Retriever は NotImplementedError。"""
+        from src.adapters.places.google_places import (
+            GooglePlacesSearcher, GooglePlacesRetriever,
+        )
+        with pytest.raises(NotImplementedError):
+            GooglePlacesSearcher().search_places({})
+        with pytest.raises(NotImplementedError):
+            GooglePlacesRetriever().retrieve_place("x", "y")

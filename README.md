@@ -146,18 +146,32 @@ uv run scripts/run_restaurant_pipeline.py --live
 uv run scripts/run_restaurant_pipeline.py --mock --log-level INFO
 ```
 
+### Adapter 構造
+search / retrieve は adapter interface 経由で差し替え可能です:
+- **デフォルト**: `MockPlaceSearcher` / `MockPlaceRetriever` (固定候補プール)
+- **将来**: `GooglePlacesSearcher` / `GooglePlacesRetriever` (スタブ準備済み)
+- Pipeline は adapter injection を受け付けます
+
+設計詳細: `docs/google_places_design.md`
+
 ## ファイル構成
 
 ```
 src/
   evaluator.py                  # 多軸評価パイプライン
   mock.py                       # Deterministic mock (テスト・--mock 用)
+  adapters/
+    places/
+      base.py                   # PlaceSearcher / PlaceRetriever Protocol
+      mock_places.py            # Mock adapter (フィルタ + fallback)
+      google_places.py          # Google Places スタブ (未実装)
+      config.py                 # GooglePlacesConfig
   services/
     infer_search_conditions.py  # Query understanding (条件抽出)
   searchers/
-    place_searcher.py           # Mock place search
+    place_searcher.py           # 後方互換ラッパー
   retrievers/
-    place_retriever.py          # Mock place retrieve
+    place_retriever.py          # 後方互換ラッパー
   normalizers/
     restaurant_normalizer.py    # raw_record → candidate 正規化
   pipeline/
@@ -180,6 +194,7 @@ examples/
   restaurant_case_1..5.json     # 境界条件テストケース
 docs/
   spec.md                       # 仕様書
+  google_places_design.md       # Google Places 接続設計書
 tests/
   test_evaluator.py             # 評価器ユニット + 統合テスト
   test_restaurant_e2e.py        # 評価器 E2E テスト
@@ -190,5 +205,5 @@ tests/
 ## 注意事項
 - **Live 実行には使用するプロバイダの API キーが必要です**
 - SDK は使うプロバイダ分だけインストールすれば OK（遅延 import）
-- search / retrieve は現時点で mock 実装です。実 API (Google Maps 等) の接続は未実装
+- search / retrieve は adapter interface 経由。デフォルトは mock 実装。Google Places 接続は設計済み・スタブ準備済み・実通信は未実装
 - `examples/restaurant.expected.json` は `--mock` 実行時の期待出力です。mock のロジックを変更した場合は再生成してください

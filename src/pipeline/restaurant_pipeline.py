@@ -1,11 +1,13 @@
 """Restaurant pipeline: query → search → retrieve → normalize → evaluate."""
 
+from __future__ import annotations
+
 import logging
 
+from src.adapters.places.base import PlaceRetriever, PlaceSearcher
+from src.adapters.places.mock_places import MockPlaceRetriever, MockPlaceSearcher
 from src.evaluator import evaluate
 from src.normalizers.restaurant_normalizer import normalize_restaurant
-from src.retrievers.place_retriever import retrieve_place
-from src.searchers.place_searcher import search_places
 from src.services.infer_search_conditions import infer_search_conditions
 
 logger = logging.getLogger(__name__)
@@ -16,6 +18,8 @@ def run_restaurant_pipeline(
     user_query: str,
     *,
     enable_fallback: bool = True,
+    place_searcher: PlaceSearcher | None = None,
+    place_retriever: PlaceRetriever | None = None,
 ) -> dict:
     """Restaurant パイプラインを実行する。
 
@@ -23,10 +27,15 @@ def run_restaurant_pipeline(
         request_id: リクエスト識別子
         user_query: ユーザーの自然文クエリ
         enable_fallback: False で strict 検索 (fallback なし)
+        place_searcher: 検索 adapter (None で MockPlaceSearcher)
+        place_retriever: 詳細取得 adapter (None で MockPlaceRetriever)
 
     Returns:
         evaluate() の response に search_diagnostics を付加した dict。
     """
+    searcher = place_searcher or MockPlaceSearcher()
+    retriever = place_retriever or MockPlaceRetriever()
+
     logger.info("=== Pipeline started: %s (fallback=%s) ===",
                 request_id, enable_fallback)
 
@@ -42,7 +51,8 @@ def run_restaurant_pipeline(
     # --- Stage 2: search ---
     logger.info("[2/5] Search")
     try:
-        search_output = search_places(conditions, enable_fallback=enable_fallback)
+        search_output = searcher.search_places(
+            conditions, enable_fallback=enable_fallback)
     except Exception:
         logger.exception("Failed at stage 2: search")
         raise
@@ -66,7 +76,7 @@ def run_restaurant_pipeline(
     retrieved = []
     for sr in search_results:
         try:
-            detail = retrieve_place(sr["source"], sr["source_id"])
+            detail = retriever.retrieve_place(sr["source"], sr["source_id"])
             retrieved.append(detail)
         except Exception:
             logger.exception("Failed at stage 3: retrieve %s", sr["source_id"])
@@ -98,7 +108,6 @@ def run_restaurant_pipeline(
         logger.exception("Failed at stage 5: evaluate")
         raise
 
-    # Attach search diagnostics to response
     response["search_diagnostics"] = search_diagnostics
 
     logger.info("=== Pipeline complete: %d candidates ranked ===",
