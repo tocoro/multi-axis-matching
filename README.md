@@ -104,34 +104,78 @@ uv run scripts/run_restaurant_example.py --mock --log-level DEBUG
 uv run --with anthropic --with jsonschema --with pytest pytest tests/ -v
 ```
 
+## Restaurant 候補収集パイプライン
+
+query → search → retrieve → normalize → evaluate の流れで動作します。
+現時点では search / retrieve は mock 実装です。
+
+```
+user query
+  ↓  query understanding (ルールベース条件抽出)
+  ↓  search (mock: 固定候補プール)
+  ↓  retrieve (mock: source_id → 詳細レコード)
+  ↓  normalize (raw_record → candidate 形式)
+  ↓  evaluate (既存の多軸評価)
+  ↓
+ranking JSON
+```
+
+### Pipeline 実行
+
+```bash
+# Mock (API キー不要)
+uv run scripts/run_restaurant_pipeline.py --mock
+
+# Live
+uv run scripts/run_restaurant_pipeline.py --live
+
+# ログ付き
+uv run scripts/run_restaurant_pipeline.py --mock --log-level INFO
+```
+
 ## ファイル構成
 
 ```
 src/
-  evaluator.py        # 評価パイプライン本体
-  mock.py             # Deterministic mock (テスト・--mock 用)
+  evaluator.py                  # 多軸評価パイプライン
+  mock.py                       # Deterministic mock (テスト・--mock 用)
+  services/
+    infer_search_conditions.py  # Query understanding (条件抽出)
+  searchers/
+    place_searcher.py           # Mock place search
+  retrievers/
+    place_retriever.py          # Mock place retrieve
+  normalizers/
+    restaurant_normalizer.py    # raw_record → candidate 正規化
+  pipeline/
+    restaurant_pipeline.py      # パイプラインオーケストレーター
 scripts/
-  run_restaurant_example.py  # 実行スクリプト (--mock / --live)
+  run_restaurant_example.py     # 評価器単体実行 (--mock / --live)
+  run_restaurant_pipeline.py    # パイプライン実行 (--mock / --live)
 prompts/
-  infer_problem_type.txt     # 問題タイプ推定プロンプト
-  extract_constraints.txt    # 制約抽出プロンプト
-  select_axes.txt            # 評価軸選択プロンプト
-  evaluate_candidate.txt     # 候補評価プロンプト
+  infer_problem_type.txt        # 問題タイプ推定プロンプト
+  extract_constraints.txt       # 制約抽出プロンプト
+  select_axes.txt               # 評価軸選択プロンプト
+  evaluate_candidate.txt        # 候補評価プロンプト
 schemas/
-  request.schema.json        # 入力スキーマ
-  response.schema.json       # 出力スキーマ
+  request.schema.json           # 入力スキーマ
+  response.schema.json          # 出力スキーマ
 examples/
-  restaurant.json            # サンプル入力
-  restaurant.expected.json   # Mock 実行時の期待出力
+  restaurant.json               # 評価器サンプル入力
+  restaurant.expected.json      # Mock 評価器の期待出力
+  restaurant_pipeline_input.json # パイプラインサンプル入力
+  restaurant_case_1..5.json     # 境界条件テストケース
 docs/
-  spec.md                    # 仕様書
+  spec.md                       # 仕様書
 tests/
-  test_evaluator.py          # ユニット + 統合テスト
-  test_restaurant_e2e.py     # Restaurant E2E テスト
+  test_evaluator.py             # 評価器ユニット + 統合テスト
+  test_restaurant_e2e.py        # 評価器 E2E テスト
+  test_restaurant_cases.py      # 境界条件テスト (5ケース)
+  test_restaurant_pipeline.py   # パイプラインテスト
 ```
 
 ## 注意事項
 - **Live 実行には使用するプロバイダの API キーが必要です**
 - SDK は使うプロバイダ分だけインストールすれば OK（遅延 import）
-- 候補検索機能は未実装です。現時点では JSON で候補を与えて評価する部分のみ動作します
+- search / retrieve は現時点で mock 実装です。実 API (Google Maps 等) の接続は未実装
 - `examples/restaurant.expected.json` は `--mock` 実行時の期待出力です。mock のロジックを変更した場合は再生成してください
