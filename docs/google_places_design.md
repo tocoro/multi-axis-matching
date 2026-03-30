@@ -62,7 +62,7 @@ location → 座標変換は Geocoding API または固定マッピングで対�
 | `displayName.text` | `title` | |
 | `formattedAddress` | `description` (一部) | |
 | `primaryType` | `structured_attributes.genre` | type → genre マッピングが必要 |
-| nearest station | `structured_attributes.nearest_station` | **API から直接取得不可**。住所から推定 or 未設定 |
+| nearest station | `structured_attributes.nearest_station` | **API から直接取得不可**。初期実装では未設定とする |
 | `priceLevel` | `structured_attributes.price_min/max` | PRICE_LEVEL_* → 金額レンジのマッピング |
 | `editorialSummary.text` | `structured_attributes.review_summary` | |
 | `rating` | (evaluate 用参考値) | structured_attributes に追加可 |
@@ -72,8 +72,8 @@ location → 座標変換は Geocoding API または固定マッピングで対�
 | — | `source_metadata.raw_source` | `"google_places"` 固定 |
 
 ### 不明項目
-- `nearest_station`: Google Places から直接取得不可。住所テキストから正規表現で推定するか、未設定にする
-- `atmosphere_tags`: editorialSummary からキーワード抽出、または未設定
+- `nearest_station`: Google Places から直接取得できないため、初期実装では未設定とする。必要なら将来的に駅データベースや Geocoding を用いた別処理で補う
+- `atmosphere_tags`: editorialSummary が存在する場合はキーワード抽出を試みる。editorialSummary が無い場合は unknown として扱い、推測で埋めない
 
 ## 6. priceLevel マッピング
 
@@ -117,11 +117,10 @@ Google Places 使用時の search_diagnostics:
 
 ## 9. コスト・制限
 
-- Text Search: $32 / 1000 requests (Basic SKU)
-- Place Details: $17 / 1000 requests (Basic SKU)
-- Field mask で取得フィールドを絞ることでコスト削減可能
-- 1 pipeline 実行 = 1 Text Search + N Place Details (N = 候補数)
-- max_results で候補数を制限してコスト管理
+- 料金は変動するため、最新の [Google Cloud 価格表](https://cloud.google.com/maps-platform/pricing) を参照すること
+- コスト構造: 1 pipeline 実行 = Text Search 1回 + Place Details N回 (N = 候補数)
+- 候補数に比例してコストが増えるため、`max_results` で候補数を制限してコスト管理する
+- Field mask で取得フィールドを絞ることで SKU を下げ、コスト削減が可能
 
 ## 10. 環境変数
 
