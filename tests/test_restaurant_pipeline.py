@@ -531,12 +531,14 @@ class TestAdapterInjection:
         assert len(r["ranking"]) == 1
         assert r["search_diagnostics"]["matched_stage"] == "custom"
 
-    def test_google_places_stub_raises(self):
-        """GooglePlacesSearcher/Retriever は NotImplementedError。"""
-        from src.adapters.places.google_places import (
-            GooglePlacesSearcher, GooglePlacesRetriever,
-        )
-        with pytest.raises(NotImplementedError):
+    def test_google_places_searcher_requires_api_key(self):
+        """GooglePlacesSearcher は API キー無しで ValueError。"""
+        from src.adapters.places.google_places import GooglePlacesSearcher
+        with pytest.raises(ValueError, match="GOOGLE_PLACES_API_KEY"):
             GooglePlacesSearcher().search_places({})
+
+    def test_google_places_retriever_not_implemented(self):
+        """GooglePlacesRetriever は未実装 (NotImplementedError)。"""
+        from src.adapters.places.google_places import GooglePlacesRetriever
         with pytest.raises(NotImplementedError):
             GooglePlacesRetriever().retrieve_place("x", "y")

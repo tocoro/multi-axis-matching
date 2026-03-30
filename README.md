@@ -55,6 +55,7 @@ cp .env.example .env
 | `ANTHROPIC_API_KEY` | Anthropic 使用時 | `claude-*` モデル用 |
 | `OPENAI_API_KEY` | OpenAI 使用時 | `gpt-*` / `o1-*` / `o3-*` / `o4-*` モデル用 |
 | `GOOGLE_API_KEY` | Gemini 使用時 | `gemini-*` モデル用 |
+| `GOOGLE_PLACES_API_KEY` | Google Places 使用時 | Places Text Search API 用 |
 
 プロバイダはモデル名のプレフィックスから自動判定されます。`EVAL_PROVIDER` で明示指定も可能です。
 
@@ -149,8 +150,12 @@ uv run scripts/run_restaurant_pipeline.py --mock --log-level INFO
 ### Adapter 構造
 search / retrieve は adapter interface 経由で差し替え可能です:
 - **デフォルト**: `MockPlaceSearcher` / `MockPlaceRetriever` (固定候補プール)
-- **将来**: `GooglePlacesSearcher` / `GooglePlacesRetriever` (スタブ準備済み)
+- **Search 実装済み**: `GooglePlacesSearcher` (Text Search API)
+- **Retrieve 未実装**: `GooglePlacesRetriever` (Place Details スタブ)
 - Pipeline は adapter injection を受け付けます
+
+Google Places Search を使うには `GOOGLE_PLACES_API_KEY` が必要です。
+現時点では Search のみ実装されており、Retrieve は mock のままです。
 
 設計詳細: `docs/google_places_design.md`
 
