@@ -61,6 +61,16 @@ cp .env.example .env
 
 ## 実行方法
 
+### Web UI (推奨)
+
+```bash
+uv run server.py              # mock mode → http://localhost:3000
+uv run server.py --live       # real LLM
+uv run server.py --port 8080  # custom port
+```
+
+ブラウザで `http://localhost:3000` を開くと、クエリ入力 → ランキング表示の UI が使えます。
+
 ### Mock モード（API キー不要）
 
 ```bash
@@ -181,6 +191,9 @@ src/
     restaurant_normalizer.py    # raw_record → candidate 正規化
   pipeline/
     restaurant_pipeline.py      # パイプラインオーケストレーター
+server.py                       # FastAPI サーバー (Web UI + API)
+static/
+  index.html                    # Web UI
 scripts/
   run_restaurant_example.py     # 評価器単体実行 (--mock / --live)
   run_restaurant_pipeline.py    # パイプライン実行 (--mock / --live)

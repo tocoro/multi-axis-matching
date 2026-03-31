@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multi-Axis Matching</title>
+<style>
+  :root {
+    --bg: #fafafa;
+    --card: #fff;
+    --border: #e5e5e5;
+    --text: #1a1a1a;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --accent-light: #eff6ff;
+    --green: #16a34a;
+    --red: #dc2626;
+    --orange: #ea580c;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+  }
+  .container { max-width: 800px; margin: 0 auto; padding: 24px 16px; }
+  h1 { font-size: 20px; font-weight: 600; margin-bottom: 20px; }
+  h2 { font-size: 15px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+
+  /* Form */
+  .search-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 24px;
+  }
+  .input-row { display: flex; gap: 8px; margin-bottom: 12px; }
+  .input-row input {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .input-row input:focus { border-color: var(--accent); }
+  .btn {
+    padding: 10px 20px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    white-space: nowrap;
+  }
+  .btn:hover { opacity: 0.9; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Options */
+  .options { display: flex; gap: 16px; align-items: center; font-size: 13px; color: var(--muted); }
+  .options label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+  .options input[type="checkbox"] { accent-color: var(--accent); }
+
+  /* Status */
+  .status { font-size: 13px; color: var(--muted); margin-bottom: 16px; min-height: 20px; }
+  .status.error { color: var(--red); }
+
+  /* Results */
+  .result-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    margin-bottom: 12px;
+    position: relative;
+  }
+  .result-card.disqualified { border-color: var(--red); opacity: 0.7; }
+  .rank-badge {
+    position: absolute;
+    top: 16px;
+    right: 20px;
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+  .rank-badge.rank-1 { color: var(--accent); }
+  .result-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; padding-right: 50px; }
+  .result-score {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .result-confidence { font-size: 13px; color: var(--muted); margin-left: 8px; }
+  .result-meta { margin-top: 8px; font-size: 13px; color: var(--muted); }
+  .disqualified-badge {
+    display: inline-block;
+    background: var(--red);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-left: 8px;
+  }
+
+  /* Axis scores */
+  .axis-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 12px; }
+  .axis-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    padding: 6px 8px;
+    background: var(--bg);
+    border-radius: 4px;
+  }
+  .axis-name { font-weight: 500; min-width: 80px; }
+  .axis-bar { flex: 1; height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; }
+  .axis-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+  .axis-bar-fill.supported { background: var(--green); }
+  .axis-bar-fill.conflict { background: var(--orange); }
+  .axis-bar-fill.unknown { background: #d1d5db; }
+  .axis-score { font-variant-numeric: tabular-nums; min-width: 28px; text-align: right; }
+  .axis-status { font-size: 11px; min-width: 60px; }
+  .axis-status.supported { color: var(--green); }
+  .axis-status.conflict { color: var(--orange); }
+  .axis-status.unknown { color: var(--muted); }
+
+  /* Details toggle */
+  .details-toggle {
+    font-size: 12px;
+    color: var(--accent);
+    cursor: pointer;
+    margin-top: 8px;
+    user-select: none;
+  }
+  .details-content { display: none; margin-top: 8px; font-size: 13px; }
+  .details-content.open { display: block; }
+  .detail-section { margin-bottom: 8px; }
+  .detail-label { font-weight: 500; font-size: 12px; color: var(--muted); }
+  .detail-list { margin: 2px 0 0 16px; }
+  .detail-list li { margin-bottom: 2px; }
+
+  /* Diagnostics */
+  .diag-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    margin-bottom: 24px;
+    font-size: 12px;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    color: var(--muted);
+  }
+  .diag-card summary { cursor: pointer; font-weight: 500; color: var(--text); font-size: 13px; }
+  .diag-pre { margin-top: 8px; white-space: pre-wrap; word-break: break-all; }
+
+  @media (max-width: 600px) {
+    .axis-grid { grid-template-columns: 1fr; }
+    .input-row { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Multi-Axis Matching</h1>
+
+  <div class="search-card">
+    <div class="input-row">
+      <input id="query" type="text" placeholder="恵比寿で静かに話せるイタリアン。予算は3000円以内"
+             value="恵比寿で静かに話せるイタリアン。予算は3000円以内">
+      <button class="btn" id="searchBtn" onclick="runSearch()">Search</button>
+    </div>
+    <div class="options">
+      <label><input type="checkbox" id="strictMode"> Strict (no fallback)</label>
+      <label><input type="checkbox" id="googlePlaces"> Google Places</label>
+    </div>
+  </div>
+
+  <div class="status" id="status"></div>
+  <div id="diagnostics"></div>
+  <div id="results"></div>
+</div>
+
+<script>
+async function runSearch() {
+  const query = document.getElementById('query').value.trim();
+  if (!query) return;
+
+  const btn = document.getElementById('searchBtn');
+  const status = document.getElementById('status');
+  const resultsDiv = document.getElementById('results');
+  const diagDiv = document.getElementById('diagnostics');
+
+  btn.disabled = true;
+  status.className = 'status';
+  status.textContent = 'Searching...';
+  resultsDiv.innerHTML = '';
+  diagDiv.innerHTML = '';
+
+  const t0 = performance.now();
+
+  try {
+    const resp = await fetch('/api/pipeline', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query,
+        enable_fallback: !document.getElementById('strictMode').checked,
+        use_google_places: document.getElementById('googlePlaces').checked,
+      }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.detail || resp.statusText);
+    }
+
+    const data = await resp.json();
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+    const ranking = data.ranking || [];
+
+    status.textContent = `${ranking.length} candidates ranked in ${elapsed}s` +
+      (data.inferred_problem_type ? ` — ${data.inferred_problem_type}` : '');
+
+    // Diagnostics
+    if (data.search_diagnostics) {
+      const d = data.search_diagnostics;
+      diagDiv.innerHTML = `<div class="diag-card"><details>
+        <summary>Search Diagnostics — ${d.matched_stage}${d.fallback_applied ? ' (fallback)' : ''} — ${d.final_result_count} results</summary>
+        <div class="diag-pre">${JSON.stringify(d, null, 2)}</div>
+      </details></div>`;
+    }
+
+    // Results
+    ranking.forEach((entry, i) => {
+      resultsDiv.innerHTML += renderResult(entry);
+    });
+
+  } catch (e) {
+    status.className = 'status error';
+    status.textContent = `Error: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderResult(e) {
+  const dq = e.disqualified;
+  const axes = (e.axis_scores || []).map(a => `
+    <div class="axis-item">
+      <span class="axis-name">${a.axis}</span>
+      <div class="axis-bar"><div class="axis-bar-fill ${a.status}" style="width:${a.score * 100}%"></div></div>
+      <span class="axis-score">${a.score.toFixed(2)}</span>
+      <span class="axis-status ${a.status}">${a.status}</span>
+    </div>`).join('');
+
+  const strengths = (e.strengths || []).length ? `<div class="detail-section"><span class="detail-label">Strengths</span><ul class="detail-list">${e.strengths.map(s=>`<li>${s}</li>`).join('')}</ul></div>` : '';
+  const weaknesses = (e.weaknesses || []).length ? `<div class="detail-section"><span class="detail-label">Weaknesses</span><ul class="detail-list">${e.weaknesses.map(s=>`<li>${s}</li>`).join('')}</ul></div>` : '';
+  const missing = (e.missing_information || []).length ? `<div class="detail-section"><span class="detail-label">Missing Information</span><ul class="detail-list">${e.missing_information.map(s=>`<li>${s}</li>`).join('')}</ul></div>` : '';
+  const dqReasons = dq && e.disqualification_reasons ? `<div class="detail-section"><span class="detail-label">Disqualification Reasons</span><ul class="detail-list">${e.disqualification_reasons.map(s=>`<li>${s}</li>`).join('')}</ul></div>` : '';
+
+  const id = `details-${e.candidate_id}`;
+
+  return `<div class="result-card${dq ? ' disqualified' : ''}">
+    <div class="rank-badge${e.rank === 1 ? ' rank-1' : ''}">#${e.rank}</div>
+    <div class="result-title">${e.candidate_id}${dq ? '<span class="disqualified-badge">DISQUALIFIED</span>' : ''}</div>
+    <div>
+      <span class="result-score">${e.total_score.toFixed(4)}</span>
+      <span class="result-confidence">confidence ${e.confidence.toFixed(2)}</span>
+    </div>
+    <div class="result-meta">${e.summary_reason || ''}</div>
+    <div class="axis-grid">${axes}</div>
+    <div class="details-toggle" onclick="toggleDetails('${id}')">Details</div>
+    <div class="details-content" id="${id}">
+      ${strengths}${weaknesses}${missing}${dqReasons}
+    </div>
+  </div>`;
+}
+
+function toggleDetails(id) {
+  document.getElementById(id).classList.toggle('open');
+}
+
+document.getElementById('query').addEventListener('keydown', e => {
+  if (e.key === 'Enter') runSearch();
+});
+</script>
+</body>
+</html>
