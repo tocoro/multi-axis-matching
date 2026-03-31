@@ -49,6 +49,106 @@ class EvaluateRequest(BaseModel):
 
 # --- Mock LLM for pipeline ---
 
+_CANDIDATE_EVALS = {
+    "place_1": {
+        "axis_scores": [
+            {"axis": "cuisine", "score": 0.85, "status": "supported",
+             "reason": "Italian restaurant", "hard_constraint_violation": False},
+            {"axis": "budget", "score": 0.9, "status": "supported",
+             "reason": "2500 avg within 3000", "hard_constraint_violation": False},
+            {"axis": "atmosphere", "score": 0.85, "status": "supported",
+             "reason": "Quiet and calm", "hard_constraint_violation": False},
+            {"axis": "location", "score": 0.9, "status": "supported",
+             "reason": "In Ebisu, 5 min walk", "hard_constraint_violation": False},
+            {"axis": "rating", "score": 0.7, "status": "supported",
+             "reason": "Good reviews", "hard_constraint_violation": False},
+        ],
+        "strengths": ["Quiet Italian in Ebisu", "Within budget"],
+        "weaknesses": [],
+        "missing_information": [],
+        "risk_notes": [],
+        "summary_reason": "Strong match: quiet Italian in Ebisu, well within budget",
+    },
+    "place_2": {
+        "axis_scores": [
+            {"axis": "cuisine", "score": 0.3, "status": "conflict",
+             "reason": "Bar, not Italian", "hard_constraint_violation": False},
+            {"axis": "budget", "score": 0.95, "status": "supported",
+             "reason": "Very affordable at 1500 avg", "hard_constraint_violation": False},
+            {"axis": "atmosphere", "score": 0.2, "status": "conflict",
+             "reason": "Lively/noisy, user wants quiet",
+             "hard_constraint_violation": False},
+            {"axis": "location", "score": 0.8, "status": "supported",
+             "reason": "In Ebisu", "hard_constraint_violation": False},
+            {"axis": "rating", "score": 0.5, "status": "supported",
+             "reason": "Average reviews", "hard_constraint_violation": False},
+        ],
+        "strengths": ["Very affordable"],
+        "weaknesses": ["Not Italian", "Noisy atmosphere"],
+        "missing_information": [],
+        "risk_notes": [],
+        "summary_reason": "Budget-friendly but wrong genre and noisy",
+    },
+    "place_3": {
+        "axis_scores": [
+            {"axis": "cuisine", "score": 0.8, "status": "supported",
+             "reason": "Italian restaurant", "hard_constraint_violation": False},
+            {"axis": "budget", "score": 0.9, "status": "supported",
+             "reason": "2000 avg within 3000", "hard_constraint_violation": False},
+            {"axis": "atmosphere", "score": 0.8, "status": "supported",
+             "reason": "Quiet hideaway", "hard_constraint_violation": False},
+            {"axis": "location", "score": 0.2, "status": "conflict",
+             "reason": "Nakameguro, not Ebisu as requested",
+             "hard_constraint_violation": False},
+            {"axis": "rating", "score": 0.75, "status": "supported",
+             "reason": "High quality food", "hard_constraint_violation": False},
+        ],
+        "strengths": ["Quality Italian", "Very quiet", "Affordable"],
+        "weaknesses": ["Not in Ebisu (Nakameguro)"],
+        "missing_information": [],
+        "risk_notes": [],
+        "summary_reason": "Great Italian hideaway but located in Nakameguro, not Ebisu",
+    },
+    "place_4": {
+        "axis_scores": [
+            {"axis": "cuisine", "score": 0.0, "status": "unknown",
+             "reason": "No cuisine information"},
+            {"axis": "budget", "score": 0.0, "status": "unknown",
+             "reason": "No price information"},
+            {"axis": "atmosphere", "score": 0.6, "status": "supported",
+             "reason": "Described as calm atmosphere",
+             "hard_constraint_violation": False},
+            {"axis": "location", "score": 0.0, "status": "unknown",
+             "reason": "No address provided"},
+            {"axis": "rating", "score": 0.0, "status": "unknown",
+             "reason": "No rating data"},
+        ],
+        "strengths": ["Seems to have calm atmosphere"],
+        "weaknesses": ["Very little information available"],
+        "missing_information": ["Cuisine type", "Price range", "Address", "Rating"],
+        "risk_notes": ["Insufficient data to evaluate most axes"],
+        "summary_reason": "Only atmosphere is evaluable; critical info missing",
+    },
+}
+
+_DEFAULT_EVAL = {
+    "axis_scores": [
+        {"axis": "cuisine", "score": 0.5, "status": "supported",
+         "reason": "Generic", "hard_constraint_violation": False},
+        {"axis": "budget", "score": 0.7, "status": "supported",
+         "reason": "OK", "hard_constraint_violation": False},
+        {"axis": "atmosphere", "score": 0.5, "status": "supported",
+         "reason": "Average", "hard_constraint_violation": False},
+        {"axis": "location", "score": 0.5, "status": "supported",
+         "reason": "OK", "hard_constraint_violation": False},
+        {"axis": "rating", "score": 0.5, "status": "supported",
+         "reason": "Average", "hard_constraint_violation": False},
+    ],
+    "strengths": [], "weaknesses": [], "missing_information": [],
+    "risk_notes": [], "summary_reason": "Default evaluation",
+}
+
+
 def _pipeline_mock(system_prompt: str, user_message: str) -> dict:
     if "前処理" in system_prompt:
         return {
@@ -66,23 +166,8 @@ def _pipeline_mock(system_prompt: str, user_message: str) -> dict:
         return {"axes": MOCK_AXES, "reason": "Restaurant axes"}
     parsed = json.loads(user_message)
     cid = parsed["candidate"]["candidate_id"]
-    default = {
-        "axis_scores": [
-            {"axis": "cuisine", "score": 0.5, "status": "supported",
-             "reason": "Generic", "hard_constraint_violation": False},
-            {"axis": "budget", "score": 0.7, "status": "supported",
-             "reason": "OK", "hard_constraint_violation": False},
-            {"axis": "atmosphere", "score": 0.5, "status": "supported",
-             "reason": "Average", "hard_constraint_violation": False},
-            {"axis": "location", "score": 0.5, "status": "supported",
-             "reason": "OK", "hard_constraint_violation": False},
-            {"axis": "rating", "score": 0.5, "status": "supported",
-             "reason": "Average", "hard_constraint_violation": False},
-        ],
-        "strengths": [], "weaknesses": [], "missing_information": [],
-        "risk_notes": [], "summary_reason": "Default mock",
-    }
-    return {"candidate_id": cid, **default}
+    data = _CANDIDATE_EVALS.get(cid, _DEFAULT_EVAL)
+    return {"candidate_id": cid, **data}
 
 
 # --- App ---
