@@ -110,6 +110,11 @@ def run_restaurant_pipeline(
 
     response["search_diagnostics"] = search_diagnostics
 
+    # Attach source data for inspection (candidate_id → normalized candidate)
+    response["candidate_sources"] = {
+        c["candidate_id"]: c for c in candidates
+    }
+
     logger.info("=== Pipeline complete: %d candidates ranked ===",
                 len(response["ranking"]))
     return response

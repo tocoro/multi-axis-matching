@@ -163,6 +163,20 @@
   .diag-card summary { cursor: pointer; font-weight: 500; color: var(--text); font-size: 13px; }
   .diag-pre { margin-top: 8px; white-space: pre-wrap; word-break: break-all; }
 
+  /* Axis reasons */
+  .axis-reasons { margin-top: 4px; }
+  .axis-reason { padding: 3px 0; font-size: 12px; color: var(--text); }
+  .axis-reason-name { font-weight: 600; color: var(--muted); }
+
+  /* Source data */
+  .source-section { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .source-title { font-weight: 600; font-size: 14px; margin: 4px 0 2px; }
+  .source-desc { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+  .source-attrs { font-size: 12px; border-collapse: collapse; width: 100%; }
+  .source-attrs td { padding: 3px 8px; border-bottom: 1px solid var(--bg); }
+  .src-key { font-weight: 500; color: var(--muted); white-space: nowrap; width: 1%; }
+  .src-val { font-family: 'SF Mono', Monaco, monospace; font-size: 11px; word-break: break-all; }
+
   @media (max-width: 600px) {
     .axis-grid { grid-template-columns: 1fr; }
     .input-row { flex-direction: column; }
@@ -241,8 +255,9 @@ async function runSearch() {
     }
 
     // Results
+    const sources = data.candidate_sources || {};
     ranking.forEach((entry, i) => {
-      resultsDiv.innerHTML += renderResult(entry);
+      resultsDiv.innerHTML += renderResult(entry, sources[entry.candidate_id]);
     });
 
   } catch (e) {
@@ -253,7 +268,7 @@ async function runSearch() {
   }
 }
 
-function renderResult(e) {
+function renderResult(e, source) {
   const dq = e.disqualified;
   const axes = (e.axis_scores || []).map(a => `
     <div class="axis-item">
@@ -263,16 +278,37 @@ function renderResult(e) {
       <span class="axis-status ${a.status}">${a.status}</span>
     </div>`).join('');
 
+  const axisReasons = (e.axis_scores || []).map(a => `
+    <div class="axis-reason"><span class="axis-reason-name">${a.axis}</span>: ${a.reason || '—'}${a.hard_constraint_violation ? ' <span style="color:var(--red);font-weight:600">HARD VIOLATION</span>' : ''}</div>`).join('');
+
   const strengths = (e.strengths || []).length ? `<div class="detail-section"><span class="detail-label">Strengths</span><ul class="detail-list">${e.strengths.map(s=>`<li>${s}</li>`).join('')}</ul></div>` : '';
   const weaknesses = (e.weaknesses || []).length ? `<div class="detail-section"><span class="detail-label">Weaknesses</span><ul class="detail-list">${e.weaknesses.map(s=>`<li>${s}</li>`).join('')}</ul></div>` : '';
   const missing = (e.missing_information || []).length ? `<div class="detail-section"><span class="detail-label">Missing Information</span><ul class="detail-list">${e.missing_information.map(s=>`<li>${s}</li>`).join('')}</ul></div>` : '';
   const dqReasons = dq && e.disqualification_reasons ? `<div class="detail-section"><span class="detail-label">Disqualification Reasons</span><ul class="detail-list">${e.disqualification_reasons.map(s=>`<li>${s}</li>`).join('')}</ul></div>` : '';
 
+  // Source data
+  let sourceHtml = '';
+  if (source) {
+    const title = source.title || '';
+    const desc = source.description || '';
+    const attrs = source.structured_attributes || {};
+    const attrRows = Object.entries(attrs).map(([k,v]) =>
+      `<tr><td class="src-key">${k}</td><td class="src-val">${Array.isArray(v) ? v.join(', ') : v}</td></tr>`
+    ).join('');
+    sourceHtml = `
+      <div class="detail-section source-section">
+        <span class="detail-label">Source Data</span>
+        <div class="source-title">${title}</div>
+        <div class="source-desc">${desc}</div>
+        ${attrRows ? `<table class="source-attrs">${attrRows}</table>` : ''}
+      </div>`;
+  }
+
   const id = `details-${e.candidate_id}`;
 
   return `<div class="result-card${dq ? ' disqualified' : ''}">
     <div class="rank-badge${e.rank === 1 ? ' rank-1' : ''}">#${e.rank}</div>
-    <div class="result-title">${e.candidate_id}${dq ? '<span class="disqualified-badge">DISQUALIFIED</span>' : ''}</div>
+    <div class="result-title">${source ? source.title : e.candidate_id}${dq ? '<span class="disqualified-badge">DISQUALIFIED</span>' : ''}</div>
     <div>
       <span class="result-score">${e.total_score.toFixed(4)}</span>
       <span class="result-confidence">confidence ${e.confidence.toFixed(2)}</span>
@@ -281,7 +317,8 @@ function renderResult(e) {
     <div class="axis-grid">${axes}</div>
     <div class="details-toggle" onclick="toggleDetails('${id}')">Details</div>
     <div class="details-content" id="${id}">
-      ${strengths}${weaknesses}${missing}${dqReasons}
+      <div class="detail-section"><span class="detail-label">Axis Reasons</span><div class="axis-reasons">${axisReasons}</div></div>
+      ${strengths}${weaknesses}${missing}${dqReasons}${sourceHtml}
     </div>
   </div>`;
 }
