@@ -24,6 +24,19 @@ _FIELD_MASK = (
     "places.rating"
 )
 
+# Fixed mapping: 地名 → locationBias circle パラメータ
+# 将来的に Geocoding API に差し替える想定。値は概算。
+_LOCATION_BIAS_CIRCLES: dict[str, dict] = {
+    "恵比寿": {"latitude": 35.6467, "longitude": 139.7100, "radius": 1500.0},
+    "渋谷": {"latitude": 35.6580, "longitude": 139.7016, "radius": 2000.0},
+    "新宿": {"latitude": 35.6900, "longitude": 139.7000, "radius": 2500.0},
+    "六本木": {"latitude": 35.6628, "longitude": 139.7310, "radius": 2000.0},
+    "銀座": {"latitude": 35.6717, "longitude": 139.7649, "radius": 1500.0},
+    "池袋": {"latitude": 35.7295, "longitude": 139.7109, "radius": 2000.0},
+    "中目黒": {"latitude": 35.6440, "longitude": 139.6988, "radius": 1500.0},
+    "代官山": {"latitude": 35.6486, "longitude": 139.7030, "radius": 1000.0},
+}
+
 
 def build_text_query(conditions: dict) -> str:
     """conditions から Google Places textQuery を構築する。
@@ -48,13 +61,39 @@ def build_text_query(conditions: dict) -> str:
     return " ".join(parts)
 
 
+def build_location_bias(location: str | None) -> dict | None:
+    """Fixed mapping から locationBias パラメータを構築する。
+
+    未知の地名には None を返す。将来的に Geocoding API で置き換え可能。
+    """
+    if location is None:
+        return None
+    coords = _LOCATION_BIAS_CIRCLES.get(location)
+    if coords is None:
+        return None
+    return {
+        "circle": {
+            "center": {
+                "latitude": coords["latitude"],
+                "longitude": coords["longitude"],
+            },
+            "radius": coords["radius"],
+        }
+    }
+
+
+def _format_primary_type(raw: str) -> str:
+    """primaryType の API 生値を表示用に軽整形する。"""
+    return raw.replace("_", " ")
+
+
 def _build_snippet(place: dict) -> str:
     """API レスポンスの place から snippet を構築する。"""
     parts: list[str] = []
     if place.get("formattedAddress"):
         parts.append(place["formattedAddress"])
     if place.get("primaryType"):
-        parts.append(place["primaryType"])
+        parts.append(_format_primary_type(place["primaryType"]))
     if place.get("priceLevel"):
         parts.append(place["priceLevel"])
     if place.get("rating"):
@@ -73,6 +112,30 @@ def _place_to_result(place: dict) -> dict:
     }
 
 
+def _build_search_body(
+    text_query: str,
+    conditions: dict,
+    max_results: int,
+) -> tuple[dict, bool]:
+    """Text Search API の request body を構築する。
+
+    Returns:
+        (body dict, location_bias_applied bool)
+    """
+    body: dict = {
+        "textQuery": text_query,
+        "maxResultCount": max_results,
+    }
+
+    location = conditions.get("location")
+    bias = build_location_bias(location)
+    if bias is not None:
+        body["locationBias"] = bias
+        return body, True
+
+    return body, False
+
+
 class GooglePlacesSearcher:
     """Google Places Text Search API (New) による候補検索。"""
 
@@ -89,6 +152,9 @@ class GooglePlacesSearcher:
             )
 
         text_query = build_text_query(conditions)
+        body, location_bias_applied = _build_search_body(
+            text_query, conditions, self._config.max_results,
+        )
         strict_conditions = {
             k: v for k, v in [
                 ("genre", conditions.get("genre")),
@@ -97,13 +163,14 @@ class GooglePlacesSearcher:
             ] if v is not None
         }
 
-        logger.info("Google Places search: textQuery=%r", text_query)
+        logger.info("Google Places search: textQuery=%r bias=%s",
+                     text_query, location_bias_applied)
 
         api_error = None
         places: list[dict] = []
 
         try:
-            places = self._call_api(text_query)
+            places = self._call_api(body)
         except httpx.TimeoutException:
             api_error = "timeout"
             logger.warning("Google Places API timeout")
@@ -123,28 +190,29 @@ class GooglePlacesSearcher:
             "fallback_applied": False,
             "matched_stage": "text_search",
             "fallback_steps": [],
+            # strict 1回目の API 結果件数 (fallback 未実装のため api_result_count と同値)
             "strict_result_count": api_result_count,
             "final_result_count": len(results),
             "text_query": text_query,
-            "location_bias_applied": False,
+            "location_bias_applied": location_bias_applied,
             "api_result_count": api_result_count,
             "api_error": api_error,
         }
 
-        logger.info("Google Places search done: %d results, error=%s",
-                     len(results), api_error)
+        logger.info("Google Places search done: %d results, bias=%s, error=%s",
+                     len(results), location_bias_applied, api_error)
         return {"results": results, "search_diagnostics": diagnostics}
 
-    def _call_api(self, text_query: str) -> list[dict]:
-        """Text Search API を呼び出す。"""
+    def _call_api(self, body: dict) -> list[dict]:
+        """Text Search API を呼び出す。
+
+        Args:
+            body: 構築済みの request body (textQuery, maxResultCount, locationBias 等)
+        """
         headers = {
             "Content-Type": "application/json",
             "X-Goog-Api-Key": self._config.api_key,
             "X-Goog-FieldMask": _FIELD_MASK,
-        }
-        body = {
-            "textQuery": text_query,
-            "maxResultCount": self._config.max_results,
         }
 
         with httpx.Client(timeout=self._config.timeout_seconds) as client:

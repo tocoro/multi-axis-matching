@@ -11,6 +11,8 @@ from src.adapters.places.google_places import (
     GooglePlacesSearcher,
     GooglePlacesRetriever,
     build_text_query,
+    build_location_bias,
+    _format_primary_type,
 )
 
 
@@ -230,3 +232,117 @@ class TestAdapterCompatibility:
     def test_retriever_still_not_implemented(self):
         with pytest.raises(NotImplementedError):
             GooglePlacesRetriever().retrieve_place("x", "y")
+
+
+# ===================================================================
+# E. locationBias
+# ===================================================================
+
+
+class TestBuildLocationBias:
+    def test_known_location(self):
+        bias = build_location_bias("恵比寿")
+        assert bias is not None
+        assert "circle" in bias
+        assert bias["circle"]["center"]["latitude"] == pytest.approx(35.6467)
+        assert bias["circle"]["radius"] == 1500.0
+
+    def test_unknown_location(self):
+        assert build_location_bias("札幌") is None
+
+    def test_none_location(self):
+        assert build_location_bias(None) is None
+
+    def test_deterministic(self):
+        b1 = build_location_bias("渋谷")
+        b2 = build_location_bias("渋谷")
+        assert b1 == b2
+
+
+class TestLocationBiasInRequest:
+    @patch("src.adapters.places.google_places.httpx.Client")
+    def test_known_location_adds_bias_to_body(self, mock_client_cls):
+        """恵比寿 → request body に locationBias が含まれる。"""
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.return_value = _mock_response(_MOCK_API_RESPONSE)
+        mock_client_cls.return_value = mock_client
+
+        searcher = GooglePlacesSearcher(config=_make_config())
+        searcher.search_places({"genre": "italian", "location": "恵比寿"})
+
+        call_args = mock_client.post.call_args
+        body = call_args.kwargs.get("json") or call_args[1].get("json")
+        assert "locationBias" in body
+        assert body["locationBias"]["circle"]["center"]["latitude"] == pytest.approx(35.6467)
+
+    @patch("src.adapters.places.google_places.httpx.Client")
+    def test_unknown_location_no_bias_in_body(self, mock_client_cls):
+        """未知地名 → locationBias なし。"""
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.return_value = _mock_response(_MOCK_API_RESPONSE)
+        mock_client_cls.return_value = mock_client
+
+        searcher = GooglePlacesSearcher(config=_make_config())
+        searcher.search_places({"genre": "italian", "location": "札幌"})
+
+        call_args = mock_client.post.call_args
+        body = call_args.kwargs.get("json") or call_args[1].get("json")
+        assert "locationBias" not in body
+
+    @patch("src.adapters.places.google_places.httpx.Client")
+    def test_no_location_no_bias(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.return_value = _mock_response(_MOCK_API_RESPONSE)
+        mock_client_cls.return_value = mock_client
+
+        searcher = GooglePlacesSearcher(config=_make_config())
+        searcher.search_places({"genre": "italian"})
+
+        call_args = mock_client.post.call_args
+        body = call_args.kwargs.get("json") or call_args[1].get("json")
+        assert "locationBias" not in body
+
+
+class TestLocationBiasDiagnostics:
+    @patch("src.adapters.places.google_places.httpx.Client")
+    def test_known_location_diagnostics_true(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.return_value = _mock_response(_MOCK_API_RESPONSE)
+        mock_client_cls.return_value = mock_client
+
+        searcher = GooglePlacesSearcher(config=_make_config())
+        output = searcher.search_places({"genre": "italian", "location": "恵比寿"})
+        assert output["search_diagnostics"]["location_bias_applied"] is True
+
+    @patch("src.adapters.places.google_places.httpx.Client")
+    def test_unknown_location_diagnostics_false(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.return_value = _mock_response(_MOCK_API_RESPONSE)
+        mock_client_cls.return_value = mock_client
+
+        searcher = GooglePlacesSearcher(config=_make_config())
+        output = searcher.search_places({"genre": "italian", "location": "札幌"})
+        assert output["search_diagnostics"]["location_bias_applied"] is False
+
+
+# ===================================================================
+# F. snippet formatting
+# ===================================================================
+
+
+class TestSnippetFormatting:
+    def test_primary_type_underscore_replaced(self):
+        assert _format_primary_type("italian_restaurant") == "italian restaurant"
+
+    def test_primary_type_no_underscore(self):
+        assert _format_primary_type("cafe") == "cafe"

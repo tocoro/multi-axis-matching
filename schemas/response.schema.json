@@ -96,6 +96,10 @@
     "search_diagnostics": {
       "type": "object",
       "additionalProperties": true
+    },
+    "candidate_sources": {
+      "type": "object",
+      "additionalProperties": true
     }
   }
 }
