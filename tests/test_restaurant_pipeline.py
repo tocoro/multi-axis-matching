@@ -438,26 +438,36 @@ class TestPipelineE2E:
 
 
 class TestPipelineFallback:
+    QUERY = "六本木で寿司が食べたい。予算は5000円"
+
     @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
-    def test_no_match_returns_all_candidates(self, _mock):
-        r = run_restaurant_pipeline("pipe-fb", "六本木で寿司が食べたい。予算は5000円")
+    def test_no_match_fallback_retrieves_top_n(self, _mock):
+        """fallback 全4件ヒット → retrieve は上位3件 (max_retrieve=3)。"""
+        r = run_restaurant_pipeline("pipe-fb", self.QUERY)
+        assert len(r["ranking"]) == 3
+
+    @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
+    def test_fallback_all_with_high_max(self, _mock):
+        """max_retrieve=10 なら全4件 retrieve。"""
+        r = run_restaurant_pipeline("pipe-fb", self.QUERY, max_retrieve=10)
         assert len(r["ranking"]) == 4
 
     @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
     def test_fallback_still_valid_response(self, _mock):
-        r = run_restaurant_pipeline("pipe-fb", "六本木で寿司が食べたい。予算は5000円")
+        r = run_restaurant_pipeline("pipe-fb", self.QUERY)
         validate_response(r)
 
     @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
     def test_fallback_diagnostics_in_response(self, _mock):
-        r = run_restaurant_pipeline("pipe-fb", "六本木で寿司が食べたい。予算は5000円")
+        r = run_restaurant_pipeline("pipe-fb", self.QUERY)
         d = r["search_diagnostics"]
         assert d["fallback_applied"] is True
         assert d["matched_stage"] == "all"
 
     @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
     def test_fallback_includes_info_lacking(self, _mock):
-        r = run_restaurant_pipeline("pipe-fb", "六本木で寿司が食べたい。予算は5000円")
+        """max_retrieve=10 で place_4 を含める。"""
+        r = run_restaurant_pipeline("pipe-fb", self.QUERY, max_retrieve=10)
         p4 = next(e for e in r["ranking"] if e["candidate_id"] == "place_4")
         assert len(p4["missing_information"]) >= 3
         assert p4["confidence"] < 0.5
@@ -544,3 +554,193 @@ class TestAdapterInjection:
         retriever = GooglePlacesRetriever(config=GooglePlacesConfig(api_key="test"))
         with pytest.raises(ValueError, match="only supports"):
             retriever.retrieve_place("other_source", "id")
+
+
+# ===================================================================
+# Google Places pipeline E2E (mocked HTTP)
+# ===================================================================
+
+_GOOGLE_SEARCH_RESPONSE = {
+    "places": [
+        {
+            "id": "ChIJ_abc",
+            "displayName": {"text": "Trattoria Real", "languageCode": "ja"},
+            "formattedAddress": "東京都渋谷区恵比寿1-2-3",
+            "primaryType": "italian_restaurant",
+            "priceLevel": "PRICE_LEVEL_MODERATE",
+            "rating": 4.2,
+        },
+        {
+            "id": "ChIJ_def",
+            "displayName": {"text": "Osteria Buona", "languageCode": "ja"},
+            "formattedAddress": "東京都渋谷区恵比寿4-5-6",
+            "primaryType": "italian_restaurant",
+            "rating": 3.8,
+        },
+    ]
+}
+
+_GOOGLE_DETAILS = {
+    "ChIJ_abc": {
+        "id": "ChIJ_abc",
+        "displayName": {"text": "Trattoria Real", "languageCode": "ja"},
+        "formattedAddress": "東京都渋谷区恵比寿1-2-3",
+        "primaryType": "italian_restaurant",
+        "types": ["italian_restaurant", "restaurant"],
+        "priceLevel": "PRICE_LEVEL_MODERATE",
+        "rating": 4.2,
+        "userRatingCount": 128,
+        "regularOpeningHours": {
+            "weekdayDescriptions": ["Mon: 11:30-22:00", "Tue: 11:30-22:00"],
+        },
+        "editorialSummary": {"text": "落ち着いた雰囲気の本格イタリアン"},
+        "websiteUri": "https://trattoria-real.example.com",
+        "googleMapsUri": "https://maps.google.com/?cid=111",
+    },
+    "ChIJ_def": {
+        "id": "ChIJ_def",
+        "displayName": {"text": "Osteria Buona", "languageCode": "ja"},
+        "formattedAddress": "東京都渋谷区恵比寿4-5-6",
+        "primaryType": "italian_restaurant",
+        "types": ["italian_restaurant", "restaurant"],
+        "rating": 3.8,
+        "userRatingCount": 42,
+        "editorialSummary": {"text": "隠れ家的イタリアン"},
+        "googleMapsUri": "https://maps.google.com/?cid=222",
+    },
+}
+
+
+class _MockGoogleSearcher:
+    """Mocked GooglePlacesSearcher for E2E test."""
+
+    def search_places(self, conditions, *, enable_fallback=True):
+        results = []
+        for p in _GOOGLE_SEARCH_RESPONSE["places"]:
+            results.append({
+                "source": "google_places",
+                "source_id": p["id"],
+                "title": p["displayName"]["text"],
+                "snippet": p.get("formattedAddress", ""),
+            })
+        return {
+            "results": results,
+            "search_diagnostics": {
+                "strict_conditions": conditions,
+                "fallback_enabled": enable_fallback,
+                "fallback_applied": False,
+                "matched_stage": "text_search",
+                "fallback_steps": [],
+                "strict_result_count": len(results),
+                "final_result_count": len(results),
+                "text_query": "italian restaurant in 恵比寿",
+                "location_bias_applied": True,
+                "api_result_count": len(results),
+                "api_error": None,
+            },
+        }
+
+
+class _MockGoogleRetriever:
+    """Mocked GooglePlacesRetriever for E2E test."""
+
+    def retrieve_place(self, source, source_id):
+        from src.adapters.places.google_places import _place_details_to_raw_record
+        place = _GOOGLE_DETAILS.get(source_id)
+        if place is None:
+            raise ValueError(f"No mock data for {source_id}")
+        return {
+            "source": source,
+            "source_id": source_id,
+            "raw_record": _place_details_to_raw_record(place),
+        }
+
+
+class _MockGoogleRetrieverWithFailure:
+    """First retrieve fails, second succeeds."""
+
+    def __init__(self):
+        self._call_count = 0
+
+    def retrieve_place(self, source, source_id):
+        self._call_count += 1
+        if self._call_count == 1:
+            raise TimeoutError("simulated timeout")
+        from src.adapters.places.google_places import _place_details_to_raw_record
+        place = _GOOGLE_DETAILS["ChIJ_def"]
+        return {
+            "source": source,
+            "source_id": source_id,
+            "raw_record": _place_details_to_raw_record(place),
+        }
+
+
+class TestGooglePipelineE2E:
+    """Google Places search + retrieve → normalize → evaluate の E2E。"""
+
+    QUERY = "恵比寿で静かに話せるイタリアン。予算は3000円以内"
+
+    @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
+    def test_pipeline_returns_ranking(self, _mock):
+        r = run_restaurant_pipeline(
+            "gp-e2e", self.QUERY,
+            place_searcher=_MockGoogleSearcher(),
+            place_retriever=_MockGoogleRetriever(),
+        )
+        assert len(r["ranking"]) == 2
+        assert r["ranking"][0]["rank"] == 1
+
+    @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
+    def test_response_has_candidate_sources(self, _mock):
+        r = run_restaurant_pipeline(
+            "gp-e2e", self.QUERY,
+            place_searcher=_MockGoogleSearcher(),
+            place_retriever=_MockGoogleRetriever(),
+        )
+        assert "candidate_sources" in r
+        assert "ChIJ_abc" in r["candidate_sources"]
+        src = r["candidate_sources"]["ChIJ_abc"]
+        assert src["title"] == "Trattoria Real"
+        assert "italian" in src["structured_attributes"].get("genre", "")
+
+    @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
+    def test_response_has_search_diagnostics(self, _mock):
+        r = run_restaurant_pipeline(
+            "gp-e2e", self.QUERY,
+            place_searcher=_MockGoogleSearcher(),
+            place_retriever=_MockGoogleRetriever(),
+        )
+        d = r["search_diagnostics"]
+        assert d["matched_stage"] == "text_search"
+        assert d["location_bias_applied"] is True
+
+    @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
+    def test_google_source_metadata(self, _mock):
+        """source_metadata に Google Maps URL が含まれる。"""
+        r = run_restaurant_pipeline(
+            "gp-e2e", self.QUERY,
+            place_searcher=_MockGoogleSearcher(),
+            place_retriever=_MockGoogleRetriever(),
+        )
+        src = r["candidate_sources"]["ChIJ_abc"]
+        assert "google_maps_url" in src["source_metadata"]
+
+    @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
+    def test_retrieve_failure_skips_candidate(self, _mock):
+        """1件 retrieve 失敗 → 残り候補で pipeline 継続。"""
+        r = run_restaurant_pipeline(
+            "gp-e2e", self.QUERY,
+            place_searcher=_MockGoogleSearcher(),
+            place_retriever=_MockGoogleRetrieverWithFailure(),
+        )
+        assert len(r["ranking"]) == 1
+        assert r["search_diagnostics"]["retrieve_failures"] == 1
+
+    @patch("src.evaluator.call_llm", side_effect=_pipeline_llm_mock)
+    def test_schema_valid(self, _mock):
+        r = run_restaurant_pipeline(
+            "gp-e2e", self.QUERY,
+            place_searcher=_MockGoogleSearcher(),
+            place_retriever=_MockGoogleRetriever(),
+        )
+        validate_response(r)

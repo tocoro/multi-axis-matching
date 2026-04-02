@@ -13,6 +13,10 @@ from src.services.infer_search_conditions import infer_search_conditions
 logger = logging.getLogger(__name__)
 
 
+# 実 API コストを抑えるため、retrieve は上位 N 件のみ
+DEFAULT_MAX_RETRIEVE = 3
+
+
 def run_restaurant_pipeline(
     request_id: str,
     user_query: str,
@@ -20,6 +24,7 @@ def run_restaurant_pipeline(
     enable_fallback: bool = True,
     place_searcher: PlaceSearcher | None = None,
     place_retriever: PlaceRetriever | None = None,
+    max_retrieve: int = DEFAULT_MAX_RETRIEVE,
 ) -> dict:
     """Restaurant パイプラインを実行する。
 
@@ -71,17 +76,30 @@ def run_restaurant_pipeline(
             "ranking": [],
         }
 
-    # --- Stage 3: retrieve ---
-    logger.info("[3/5] Retrieve")
+    # --- Stage 3: retrieve (上位 max_retrieve 件のみ) ---
+    targets = search_results[:max_retrieve]
+    logger.info("[3/5] Retrieve (top %d of %d)", len(targets), len(search_results))
     retrieved = []
-    for sr in search_results:
+    retrieve_failures = 0
+    for sr in targets:
         try:
             detail = retriever.retrieve_place(sr["source"], sr["source_id"])
             retrieved.append(detail)
         except Exception:
-            logger.exception("Failed at stage 3: retrieve %s", sr["source_id"])
-            raise
-    logger.info("  retrieved %d details", len(retrieved))
+            retrieve_failures += 1
+            logger.warning("Retrieve failed for %s, skipping", sr["source_id"],
+                           exc_info=True)
+    logger.info("  retrieved %d details (%d failures)",
+                len(retrieved), retrieve_failures)
+
+    if not retrieved:
+        logger.warning("All retrieves failed — returning empty response")
+        search_diagnostics["retrieve_failures"] = retrieve_failures
+        return {
+            "request_id": request_id,
+            "search_diagnostics": search_diagnostics,
+            "ranking": [],
+        }
 
     # --- Stage 4: normalize ---
     logger.info("[4/5] Normalize")
@@ -108,6 +126,7 @@ def run_restaurant_pipeline(
         logger.exception("Failed at stage 5: evaluate")
         raise
 
+    search_diagnostics["retrieve_failures"] = retrieve_failures
     response["search_diagnostics"] = search_diagnostics
 
     # Attach source data for inspection (candidate_id → normalized candidate)
