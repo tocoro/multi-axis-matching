@@ -13,6 +13,8 @@ from src.adapters.places.google_places import (
     build_text_query,
     build_location_bias,
     _format_primary_type,
+    _extract_opening_hours_text,
+    _place_details_to_raw_record,
 )
 
 
@@ -229,9 +231,9 @@ class TestAdapterCompatibility:
             run_restaurant_pipeline(
                 "test", "テスト", place_searcher=searcher)
 
-    def test_retriever_still_not_implemented(self):
-        with pytest.raises(NotImplementedError):
-            GooglePlacesRetriever().retrieve_place("x", "y")
+    def test_retriever_requires_api_key(self):
+        with pytest.raises(ValueError, match="GOOGLE_PLACES_API_KEY"):
+            GooglePlacesRetriever().retrieve_place("google_places", "ChIJ_x")
 
 
 # ===================================================================
@@ -346,3 +348,144 @@ class TestSnippetFormatting:
 
     def test_primary_type_no_underscore(self):
         assert _format_primary_type("cafe") == "cafe"
+
+
+# ===================================================================
+# G. Place Details (Retriever)
+# ===================================================================
+
+_MOCK_DETAILS_RESPONSE = {
+    "id": "ChIJ_abc123",
+    "displayName": {"text": "Trattoria Test", "languageCode": "ja"},
+    "formattedAddress": "東京都渋谷区恵比寿1-2-3",
+    "primaryType": "italian_restaurant",
+    "types": ["italian_restaurant", "restaurant", "food"],
+    "priceLevel": "PRICE_LEVEL_MODERATE",
+    "rating": 4.2,
+    "userRatingCount": 128,
+    "regularOpeningHours": {
+        "weekdayDescriptions": [
+            "Mon: 11:30-22:00",
+            "Tue: 11:30-22:00",
+            "Wed: 11:30-22:00",
+            "Thu: 11:30-22:00",
+            "Fri: 11:30-23:00",
+            "Sat: 11:00-23:00",
+            "Sun: 11:00-22:00",
+        ]
+    },
+    "editorialSummary": {"text": "落ち着いた雰囲気の本格イタリアン"},
+    "websiteUri": "https://trattoria-test.example.com",
+    "googleMapsUri": "https://maps.google.com/?cid=12345",
+}
+
+
+class TestExtractOpeningHours:
+    def test_with_weekday_descriptions(self):
+        text = _extract_opening_hours_text(_MOCK_DETAILS_RESPONSE)
+        assert text is not None
+        assert "Mon: 11:30-22:00" in text
+        assert " / " in text
+
+    def test_without_opening_hours(self):
+        assert _extract_opening_hours_text({}) is None
+
+    def test_without_weekday_descriptions(self):
+        assert _extract_opening_hours_text({"regularOpeningHours": {}}) is None
+
+
+class TestPlaceDetailsToRawRecord:
+    def test_full_response(self):
+        r = _place_details_to_raw_record(_MOCK_DETAILS_RESPONSE)
+        assert r["name"] == "Trattoria Test"
+        assert r["address"] == "東京都渋谷区恵比寿1-2-3"
+        assert r["category"] == "italian_restaurant"
+        assert "italian_restaurant" in r["types"]
+        assert r["price_level"] == "PRICE_LEVEL_MODERATE"
+        assert r["rating"] == 4.2
+        assert r["user_rating_count"] == 128
+        assert "Mon: 11:30-22:00" in r["opening_hours_text"]
+        assert r["editorial_summary"] == "落ち着いた雰囲気の本格イタリアン"
+        assert r["website_url"] == "https://trattoria-test.example.com"
+        assert r["maps_url"] == "https://maps.google.com/?cid=12345"
+
+    def test_minimal_response(self):
+        r = _place_details_to_raw_record({"displayName": {"text": "Minimal"}})
+        assert r["name"] == "Minimal"
+        assert r["address"] is None
+        assert r["opening_hours_text"] is None
+        assert r["editorial_summary"] is None
+
+
+class TestGooglePlacesRetrieverMocked:
+    @patch("src.adapters.places.google_places.httpx.Client")
+    def test_returns_raw_record(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get.return_value = _mock_response(_MOCK_DETAILS_RESPONSE)
+        mock_client_cls.return_value = mock_client
+
+        retriever = GooglePlacesRetriever(config=_make_config())
+        result = retriever.retrieve_place("google_places", "ChIJ_abc123")
+
+        assert result["source"] == "google_places"
+        assert result["source_id"] == "ChIJ_abc123"
+        assert result["raw_record"]["name"] == "Trattoria Test"
+        assert result["raw_record"]["rating"] == 4.2
+        assert result["raw_record"]["editorial_summary"] == "落ち着いた雰囲気の本格イタリアン"
+
+    @patch("src.adapters.places.google_places.httpx.Client")
+    def test_calls_correct_url(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get.return_value = _mock_response(_MOCK_DETAILS_RESPONSE)
+        mock_client_cls.return_value = mock_client
+
+        retriever = GooglePlacesRetriever(config=_make_config())
+        retriever.retrieve_place("google_places", "ChIJ_abc123")
+
+        call_args = mock_client.get.call_args
+        url = call_args[0][0]
+        assert "places/ChIJ_abc123" in url
+
+
+class TestGooglePlacesRetrieverErrors:
+    def test_wrong_source_raises(self):
+        retriever = GooglePlacesRetriever(config=_make_config())
+        with pytest.raises(ValueError, match="only supports"):
+            retriever.retrieve_place("other_source", "id")
+
+    def test_no_api_key_raises(self):
+        retriever = GooglePlacesRetriever(config=_make_config(api_key=""))
+        with pytest.raises(ValueError, match="GOOGLE_PLACES_API_KEY"):
+            retriever.retrieve_place("google_places", "id")
+
+    @patch("src.adapters.places.google_places.httpx.Client")
+    def test_timeout_raises(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get.side_effect = httpx.ReadTimeout("timeout")
+        mock_client_cls.return_value = mock_client
+
+        retriever = GooglePlacesRetriever(config=_make_config())
+        with pytest.raises(httpx.ReadTimeout):
+            retriever.retrieve_place("google_places", "ChIJ_x")
+
+    @patch("src.adapters.places.google_places.httpx.Client")
+    def test_http_error_raises(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        resp = _mock_response({"error": "not found"}, status_code=404)
+        mock_client.get.return_value = resp
+        def raise_for_status():
+            raise httpx.HTTPStatusError("404", request=resp.request, response=resp)
+        resp.raise_for_status = raise_for_status
+        mock_client_cls.return_value = mock_client
+
+        retriever = GooglePlacesRetriever(config=_make_config())
+        with pytest.raises(httpx.HTTPStatusError):
+            retriever.retrieve_place("google_places", "ChIJ_x")

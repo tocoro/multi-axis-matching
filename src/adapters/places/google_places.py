@@ -223,14 +223,104 @@ class GooglePlacesSearcher:
         return data.get("places", [])
 
 
+_DETAILS_FIELD_MASK = (
+    "id,"
+    "displayName,"
+    "formattedAddress,"
+    "primaryType,"
+    "types,"
+    "priceLevel,"
+    "rating,"
+    "userRatingCount,"
+    "regularOpeningHours,"
+    "editorialSummary,"
+    "websiteUri,"
+    "googleMapsUri"
+)
+
+
+def _extract_opening_hours_text(place: dict) -> str | None:
+    """regularOpeningHours から簡易テキストを生成する。"""
+    hours = place.get("regularOpeningHours")
+    if not hours:
+        return None
+    descriptions = hours.get("weekdayDescriptions")
+    if not descriptions:
+        return None
+    return " / ".join(descriptions)
+
+
+def _place_details_to_raw_record(place: dict) -> dict:
+    """Place Details API レスポンスを raw_record 形式に変換する。
+
+    不明な項目は None。推測で埋めない。
+    """
+    display_name = place.get("displayName", {})
+    editorial = place.get("editorialSummary", {})
+
+    record: dict = {
+        "name": display_name.get("text"),
+        "address": place.get("formattedAddress"),
+        "category": place.get("primaryType"),
+        "types": place.get("types"),
+        "price_level": place.get("priceLevel"),
+        "rating": place.get("rating"),
+        "user_rating_count": place.get("userRatingCount"),
+        "opening_hours_text": _extract_opening_hours_text(place),
+        "editorial_summary": editorial.get("text") if editorial else None,
+        "website_url": place.get("websiteUri"),
+        "maps_url": place.get("googleMapsUri"),
+    }
+    return record
+
+
 class GooglePlacesRetriever:
-    """Google Places Place Details API による詳細取得。未実装。"""
+    """Google Places Place Details API (New) による詳細取得。"""
 
     def __init__(self, config: GooglePlacesConfig | None = None) -> None:
         self._config = config or GooglePlacesConfig.from_env()
 
     def retrieve_place(self, source: str, source_id: str) -> dict:
-        raise NotImplementedError(
-            "GooglePlacesRetriever is not yet implemented. "
-            "Set GOOGLE_PLACES_API_KEY and implement HTTP calls."
-        )
+        """place_id に対応する詳細レコードを取得する。
+
+        Args:
+            source: "google_places" のみサポート
+            source_id: Google Places の place_id (例: "ChIJ...")
+        """
+        if source != "google_places":
+            raise ValueError(
+                f"GooglePlacesRetriever only supports source='google_places', "
+                f"got '{source}'"
+            )
+        if not self._config.api_key:
+            raise ValueError(
+                "GOOGLE_PLACES_API_KEY is not set. "
+                "Provide it via environment variable or GooglePlacesConfig."
+            )
+
+        logger.info("Google Places details: place_id=%s", source_id)
+        place = self._call_api(source_id)
+        raw_record = _place_details_to_raw_record(place)
+
+        logger.info("Google Places details done: %s — %d fields",
+                     source_id,
+                     sum(1 for v in raw_record.values() if v is not None))
+        return {
+            "source": source,
+            "source_id": source_id,
+            "raw_record": raw_record,
+        }
+
+    def _call_api(self, place_id: str) -> dict:
+        """Place Details API を呼び出す。"""
+        url = f"https://places.googleapis.com/v1/places/{place_id}"
+        headers = {
+            "X-Goog-Api-Key": self._config.api_key,
+            "X-Goog-FieldMask": _DETAILS_FIELD_MASK,
+        }
+
+        with httpx.Client(timeout=self._config.timeout_seconds) as client:
+            resp = client.get(url, headers=headers)
+            resp.raise_for_status()
+
+        return resp.json()

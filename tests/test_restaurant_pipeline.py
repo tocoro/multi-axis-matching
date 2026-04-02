@@ -537,8 +537,10 @@ class TestAdapterInjection:
         with pytest.raises(ValueError, match="GOOGLE_PLACES_API_KEY"):
             GooglePlacesSearcher().search_places({})
 
-    def test_google_places_retriever_not_implemented(self):
-        """GooglePlacesRetriever は未実装 (NotImplementedError)。"""
+    def test_google_places_retriever_rejects_wrong_source(self):
+        """GooglePlacesRetriever は source != google_places で ValueError。"""
         from src.adapters.places.google_places import GooglePlacesRetriever
-        with pytest.raises(NotImplementedError):
-            GooglePlacesRetriever().retrieve_place("x", "y")
+        from src.adapters.places.config import GooglePlacesConfig
+        retriever = GooglePlacesRetriever(config=GooglePlacesConfig(api_key="test"))
+        with pytest.raises(ValueError, match="only supports"):
+            retriever.retrieve_place("other_source", "id")
