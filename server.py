@@ -237,8 +237,9 @@ async def api_pipeline(req: PipelineRequest):
     )
 
     if req.use_google_places:
-        from src.adapters.places.google_places import GooglePlacesSearcher
+        from src.adapters.places.google_places import GooglePlacesSearcher, GooglePlacesRetriever
         kwargs["place_searcher"] = GooglePlacesSearcher()
+        kwargs["place_retriever"] = GooglePlacesRetriever()
 
     use_live = req.live or _use_live
 
