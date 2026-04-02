@@ -194,6 +194,7 @@
       <button class="btn" id="searchBtn" onclick="runSearch()">Search</button>
     </div>
     <div class="options">
+      <label><input type="checkbox" id="liveMode"> Live (real LLM)</label>
       <label><input type="checkbox" id="strictMode"> Strict (no fallback)</label>
       <label><input type="checkbox" id="googlePlaces"> Google Places</label>
     </div>
@@ -228,6 +229,7 @@ async function runSearch() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         query,
+        live: document.getElementById('liveMode').checked,
         enable_fallback: !document.getElementById('strictMode').checked,
         use_google_places: document.getElementById('googlePlaces').checked,
       }),
@@ -242,7 +244,8 @@ async function runSearch() {
     const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
     const ranking = data.ranking || [];
 
-    status.textContent = `${ranking.length} candidates ranked in ${elapsed}s` +
+    const mode = data.mode === 'live' ? 'LIVE' : 'MOCK';
+    status.textContent = `[${mode}] ${ranking.length} candidates ranked in ${elapsed}s` +
       (data.inferred_problem_type ? ` — ${data.inferred_problem_type}` : '');
 
     // Diagnostics

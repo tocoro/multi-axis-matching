@@ -39,12 +39,14 @@ class PipelineRequest(BaseModel):
     query: str
     enable_fallback: bool = True
     use_google_places: bool = False
+    live: bool = False
 
 
 class EvaluateRequest(BaseModel):
     request_id: str
     user_query: str
     candidates: list[dict]
+    live: bool = False
 
 
 # --- Mock LLM for pipeline ---
@@ -236,8 +238,10 @@ async def api_pipeline(req: PipelineRequest):
         from src.adapters.places.google_places import GooglePlacesSearcher
         kwargs["place_searcher"] = GooglePlacesSearcher()
 
+    use_live = req.live or _use_live
+
     try:
-        if _use_live:
+        if use_live:
             response = run_restaurant_pipeline(**kwargs)
         else:
             with patch("src.evaluator.call_llm", side_effect=_pipeline_mock):
@@ -248,6 +252,7 @@ async def api_pipeline(req: PipelineRequest):
         logger.exception("Pipeline failed")
         raise HTTPException(status_code=500, detail=str(e))
 
+    response["mode"] = "live" if use_live else "mock"
     return response
 
 
@@ -258,8 +263,10 @@ async def api_evaluate(req: EvaluateRequest):
         "user_query": req.user_query,
         "candidates": req.candidates,
     }
+    use_live = req.live or _use_live
+
     try:
-        if _use_live:
+        if use_live:
             response = evaluate(request)
         else:
             with patch("src.evaluator.call_llm", side_effect=mock_restaurant_dispatch):
