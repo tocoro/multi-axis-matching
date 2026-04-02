@@ -9,6 +9,7 @@ Usage:
 import argparse
 import json
 import logging
+import os
 import sys
 import traceback
 from contextlib import asynccontextmanager
@@ -40,6 +41,7 @@ class PipelineRequest(BaseModel):
     enable_fallback: bool = True
     use_google_places: bool = False
     live: bool = False
+    model: str | None = None
 
 
 class EvaluateRequest(BaseModel):
@@ -240,6 +242,11 @@ async def api_pipeline(req: PipelineRequest):
 
     use_live = req.live or _use_live
 
+    # Model override per request
+    orig_model = os.environ.get("EVAL_MODEL")
+    if req.model and use_live:
+        os.environ["EVAL_MODEL"] = req.model
+
     try:
         if use_live:
             response = run_restaurant_pipeline(**kwargs)
@@ -251,8 +258,15 @@ async def api_pipeline(req: PipelineRequest):
     except Exception as e:
         logger.exception("Pipeline failed")
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if orig_model is not None:
+            os.environ["EVAL_MODEL"] = orig_model
+        elif "EVAL_MODEL" in os.environ and req.model:
+            del os.environ["EVAL_MODEL"]
 
     response["mode"] = "live" if use_live else "mock"
+    if req.model and use_live:
+        response["model"] = req.model
     return response
 
 
