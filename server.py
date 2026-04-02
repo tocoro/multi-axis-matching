@@ -157,16 +157,55 @@ def _pipeline_mock(system_prompt: str, user_message: str) -> dict:
             "reason": "Restaurant query",
         }
     if "制約を抽出" in system_prompt:
-        return {
-            "hard_constraints": {"budget_max": 3000},
-            "soft_preferences": {"atmosphere": "quiet"},
-            "notes": [],
-        }
+        # user_message からクエリを見て制約を動的に返す
+        constraints: dict = {"hard_constraints": {}, "soft_preferences": {}, "notes": []}
+        if "3000" in user_message or "３０００" in user_message:
+            constraints["hard_constraints"]["budget_max"] = 3000
+        if "静か" in user_message or "話せる" in user_message:
+            constraints["soft_preferences"]["atmosphere"] = "quiet"
+        return constraints
     if "評価軸選択" in system_prompt:
         return {"axes": MOCK_AXES, "reason": "Restaurant axes"}
+
+    # evaluate_candidate — query の制約に応じて動的に評価
     parsed = json.loads(user_message)
     cid = parsed["candidate"]["candidate_id"]
-    data = _CANDIDATE_EVALS.get(cid, _DEFAULT_EVAL)
+    hard = parsed.get("hard_constraints", {})
+    soft = parsed.get("soft_preferences", {})
+    user_query = parsed.get("user_query", "")
+
+    # location 要求があるかどうかで評価を分岐
+    location_requested = hard.get("location") or any(
+        loc in user_query for loc in ("恵比寿", "渋谷", "新宿", "六本木", "銀座")
+    )
+
+    import copy
+    data = copy.deepcopy(_CANDIDATE_EVALS.get(cid, _DEFAULT_EVAL))
+
+    # location 要求がない場合、location 軸を中立にする
+    if not location_requested:
+        for axis in data["axis_scores"]:
+            if axis["axis"] == "location":
+                if axis["status"] == "conflict":
+                    axis["status"] = "supported"
+                    axis["score"] = 0.6
+                    axis["reason"] = "No specific location requested"
+                    axis["hard_constraint_violation"] = False
+        # strengths/weaknesses からも location 言及を除去
+        data["weaknesses"] = [w for w in data.get("weaknesses", [])
+                              if "Ebisu" not in w and "恵比寿" not in w]
+        if "not Ebisu" in data.get("summary_reason", ""):
+            data["summary_reason"] = data["summary_reason"].replace(
+                "but located in Nakameguro, not Ebisu", "in Nakameguro")
+
+    # atmosphere 要求がない場合、atmosphere conflict を中立にする
+    if not soft.get("atmosphere"):
+        for axis in data["axis_scores"]:
+            if axis["axis"] == "atmosphere" and axis["status"] == "conflict":
+                axis["status"] = "supported"
+                axis["score"] = 0.5
+                axis["reason"] = "No specific atmosphere preference"
+
     return {"candidate_id": cid, **data}
 
 
