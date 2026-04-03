@@ -271,6 +271,55 @@ async def api_pipeline(req: PipelineRequest):
     return response
 
 
+@app.post("/api/ablation")
+async def api_ablation(req: PipelineRequest):
+    """Solution Catalog あり/なしの比較実行。"""
+    global _request_counter
+    _request_counter += 1
+    request_id = f"abl-{_request_counter}"
+
+    from src.experiments.catalog_ablation import run_ablation
+
+    use_live = req.live or _use_live
+    mock_fn = None if use_live else _pipeline_mock
+
+    orig_model = os.environ.get("EVAL_MODEL")
+    if req.model and use_live:
+        os.environ["EVAL_MODEL"] = req.model
+
+    try:
+        if use_live:
+            result = run_ablation(request_id, req.query, llm_mock_fn=_pipeline_mock)
+            # For live we can't easily use run_ablation's patching, so run manually
+            from src.pipeline.restaurant_pipeline import run_restaurant_pipeline as _run
+            with_cat = _run(f"{request_id}-with", req.query)
+            without_cat = _run(
+                f"{request_id}-without", req.query,
+                catalog_path="/nonexistent/__no_catalog__.json")
+            from src.experiments.catalog_ablation import _compute_diff
+            result = {
+                "query": req.query,
+                "with_catalog": with_cat,
+                "without_catalog": without_cat,
+                "diff_summary": _compute_diff(with_cat, without_cat),
+            }
+        else:
+            result = run_ablation(
+                request_id, req.query, llm_mock_fn=_pipeline_mock)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("Ablation failed")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if orig_model is not None:
+            os.environ["EVAL_MODEL"] = orig_model
+        elif "EVAL_MODEL" in os.environ and req.model:
+            del os.environ["EVAL_MODEL"]
+
+    return result
+
+
 @app.post("/api/evaluate")
 async def api_evaluate(req: EvaluateRequest):
     request = {

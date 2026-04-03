@@ -168,6 +168,23 @@
   .diag-card summary { cursor: pointer; font-weight: 500; color: var(--text); font-size: 13px; }
   .diag-pre { margin-top: 8px; white-space: pre-wrap; word-break: break-all; }
 
+  /* Ablation comparison */
+  .ablation-wrapper { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .ablation-col { min-width: 0; }
+  .ablation-col h3 { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+  .diff-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px; margin-bottom: 16px;
+  }
+  .diff-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+  .diff-row { display: flex; gap: 8px; font-size: 13px; padding: 4px 0; border-bottom: 1px solid var(--bg); }
+  .diff-label { font-weight: 500; color: var(--muted); min-width: 100px; }
+  .diff-val { font-family: 'SF Mono', Monaco, monospace; font-size: 12px; }
+  .diff-arrow { color: var(--accent); font-weight: 600; }
+  .diff-changed { background: var(--accent-light); padding: 2px 6px; border-radius: 3px; }
+
+  @media (max-width: 700px) { .ablation-wrapper { grid-template-columns: 1fr; } }
+
   /* Axis reasons */
   .axis-reasons { margin-top: 4px; }
   .axis-reason { padding: 3px 0; font-size: 12px; color: var(--text); }
@@ -197,6 +214,7 @@
       <input id="query" type="text" placeholder="恵比寿で静かに話せるイタリアン。予算は3000円以内"
              value="恵比寿で静かに話せるイタリアン。予算は3000円以内">
       <button class="btn" id="searchBtn" onclick="runSearch()">Search</button>
+      <button class="btn" id="compareBtn" onclick="runAblation()" style="background:var(--muted)">Compare</button>
     </div>
     <div class="options">
       <label><input type="checkbox" id="liveMode" onchange="toggleModel()"> Live (real LLM)</label>
@@ -347,6 +365,98 @@ function toggleDetails(id) {
 
 function toggleModel() {
   document.getElementById('modelSelect').disabled = !document.getElementById('liveMode').checked;
+}
+
+async function runAblation() {
+  const query = document.getElementById('query').value.trim();
+  if (!query) return;
+
+  const btn = document.getElementById('compareBtn');
+  const status = document.getElementById('status');
+  const resultsDiv = document.getElementById('results');
+  const diagDiv = document.getElementById('diagnostics');
+
+  btn.disabled = true;
+  status.className = 'status';
+  status.textContent = 'Running catalog ablation comparison...';
+  resultsDiv.innerHTML = '';
+  diagDiv.innerHTML = '';
+
+  const t0 = performance.now();
+
+  try {
+    const resp = await fetch('/api/ablation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query,
+        live: document.getElementById('liveMode').checked,
+        model: document.getElementById('modelSelect').value || null,
+        enable_fallback: !document.getElementById('strictMode').checked,
+        use_google_places: document.getElementById('googlePlaces').checked,
+      }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.detail || resp.statusText);
+    }
+
+    const data = await resp.json();
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+
+    status.textContent = `Ablation comparison done in ${elapsed}s`;
+
+    // Diff summary card
+    const d = data.diff_summary;
+    let diffHtml = `<div class="diff-card"><h3>Diff Summary</h3>`;
+    diffHtml += `<div class="diff-row"><span class="diff-label">Ranking changed</span><span class="diff-val">${d.ranking_changed ? 'YES' : 'No'}</span></div>`;
+
+    if (Object.keys(d.score_changes).length) {
+      for (const [cid, v] of Object.entries(d.score_changes)) {
+        diffHtml += `<div class="diff-row diff-changed"><span class="diff-label">${cid} score</span><span class="diff-val">${v.without?.toFixed(4)} <span class="diff-arrow">→</span> ${v.with?.toFixed(4)}</span></div>`;
+      }
+    }
+    if (Object.keys(d.confidence_changes).length) {
+      for (const [cid, v] of Object.entries(d.confidence_changes)) {
+        diffHtml += `<div class="diff-row diff-changed"><span class="diff-label">${cid} conf</span><span class="diff-val">${v.without?.toFixed(2)} <span class="diff-arrow">→</span> ${v.with?.toFixed(2)}</span></div>`;
+      }
+    }
+    if (Object.keys(d.reason_changes).length) {
+      for (const [cid, axes] of Object.entries(d.reason_changes)) {
+        diffHtml += `<div class="diff-row diff-changed"><span class="diff-label">${cid} reasons</span><span class="diff-val">${axes.join(', ')}</span></div>`;
+      }
+    }
+    if (Object.keys(d.unknown_changes).length) {
+      for (const [cid, v] of Object.entries(d.unknown_changes)) {
+        diffHtml += `<div class="diff-row diff-changed"><span class="diff-label">${cid} unknown</span><span class="diff-val">${v.without} <span class="diff-arrow">→</span> ${v.with}</span></div>`;
+      }
+    }
+    if (!Object.keys(d.score_changes).length && !Object.keys(d.confidence_changes).length && !Object.keys(d.reason_changes).length && !Object.keys(d.unknown_changes).length) {
+      diffHtml += `<div class="diff-row"><span class="diff-val" style="color:var(--muted)">No differences detected</span></div>`;
+    }
+    diffHtml += `</div>`;
+    diagDiv.innerHTML = diffHtml;
+
+    // Side by side results
+    const withRanking = data.with_catalog?.ranking || [];
+    const withoutRanking = data.without_catalog?.ranking || [];
+    const withSources = data.with_catalog?.candidate_sources || {};
+    const withoutSources = data.without_catalog?.candidate_sources || {};
+
+    let leftHtml = withRanking.map(e => renderResult(e, withSources[e.candidate_id])).join('');
+    let rightHtml = withoutRanking.map(e => renderResult(e, withoutSources[e.candidate_id])).join('');
+
+    resultsDiv.innerHTML = `<div class="ablation-wrapper">
+      <div class="ablation-col"><h3>With Catalog</h3>${leftHtml}</div>
+      <div class="ablation-col"><h3>Without Catalog</h3>${rightHtml}</div>
+    </div>`;
+
+  } catch (e) {
+    status.className = 'status error';
+    status.textContent = `Error: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 document.getElementById('query').addEventListener('keydown', e => {
