@@ -53,3 +53,41 @@ class TestScoreGradientGuide:
         assert "supported" in p
         assert "unknown" in p
         assert "conflict" in p
+
+
+class TestCatalogUsageContract:
+    """Solution Catalog 利用規約が prompt に含まれていること。"""
+
+    def test_precedence_defined(self):
+        p = _load_prompt()
+        assert "優先関係" in p or "precedence" in p.lower()
+        assert "candidate data より上位ではない" in p
+
+    def test_claims_allowed_uses(self):
+        p = _load_prompt()
+        assert "axis reason を補強する" in p
+        assert "confidence を少し支える" in p
+
+    def test_claims_disallowed_uses(self):
+        p = _load_prompt()
+        assert "claim があるだけで高得点を確定しない" in p
+        assert "raw evidence なしに hard support とみなさない" in p
+        assert "機械的に score へ直結しない" in p
+
+    def test_limitations_allowed_uses(self):
+        p = _load_prompt()
+        assert "conflict reason の補助" in p
+
+    def test_limitations_disallowed_uses(self):
+        p = _load_prompt()
+        assert "limitation があるだけで即 disqualify しない" in p
+        assert "hard_constraint_violation に自動変換しない" in p
+
+    def test_unknown_catalog_rules(self):
+        p = _load_prompt()
+        assert "catalog があることは unknown を自動的に解消しない" in p
+        assert "catalog 未記載は否定でも肯定でもない" in p
+
+    def test_catalog_absent_rule(self):
+        p = _load_prompt()
+        assert "catalog が無い場合は通常どおり評価する" in p

@@ -34,12 +34,41 @@ reason の記述:
 - 「部分的に合致」「近接エリアのため一定の適合」「価格帯はやや上振れ」「情報不足のため判断保留」等
 
 Solution Catalog (補助情報):
-- 入力に solution_catalog が含まれる場合、候補がどんな問題に向く/不向きかの補助情報として参照してよい
-- solution_claims は候補の得意領域、hard_limitations は不向きな領域を示す
-- ただし catalog は補助であり、candidate の属性データや user_query の分析を置き換えない
-- catalog と他の情報が矛盾する場合は、理由を見ながら慎重に判断する
-- catalog が無い場合は通常どおり評価する
-- catalog に記載がないことを hard violation とみなさない
+
+優先関係 (precedence):
+  1. user query / inferred constraints (最優先)
+  2. candidate の raw / structured data
+  3. solution catalog (補助)
+catalog は補助的な semantic summary であり、candidate data より上位ではない。
+
+solution_claims の使い方:
+  許可:
+  - axis reason を補強する材料として使ってよい
+  - supported / partial support の判断補助に使ってよい
+  - claim と candidate data が整合する場合、confidence を少し支える材料にしてよい
+  - 例: 「solution catalog でも quiet_conversation 向きと整理されており、候補説明とも整合する」
+  禁止:
+  - claim があるだけで高得点を確定しない
+  - claim を raw evidence なしに hard support とみなさない
+  - claim の strength (strong/medium/weak) を機械的に score へ直結しない
+
+hard_limitations の使い方:
+  許可:
+  - conflict reason の補助に使ってよい
+  - problem_pattern が一致し candidate data とも整合する場合、不向き判断の補助にしてよい
+  - 例: 「solution catalog に banquet 不向きの記述があり、ユーザーの宴会用途とはずれる」
+  禁止:
+  - limitation があるだけで即 disqualify しない
+  - limitation を hard_constraint_violation に自動変換しない
+  - user query と対応しない limitation を無関係な軸に持ち込まない
+
+unknown と catalog の関係:
+  - catalog があることは unknown を自動的に解消しない
+  - claim があっても、軸に必要な具体情報が足りなければ unknown は残りうる
+  - limitation がないことは「問題なし」の証拠ではない
+  - catalog 未記載は否定でも肯定でもない
+
+catalog が無い場合は通常どおり評価する。
 
 返却形式:
 {
