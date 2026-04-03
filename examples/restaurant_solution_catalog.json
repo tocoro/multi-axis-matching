@@ -28,8 +28,8 @@
         "reason": "静かな雰囲気の店のため大人数の宴会には不向き"
       },
       {
-        "problem_pattern": "late_night_dining",
-        "reason": "営業時間の情報がなく、深夜営業は不明"
+        "problem_pattern": "large_group_banquet",
+        "reason": "落ち着いた雰囲気の小規模店のため、大人数の宴会には対応しにくい"
       }
     ],
     "evidence": {

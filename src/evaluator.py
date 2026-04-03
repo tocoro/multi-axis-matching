@@ -190,20 +190,29 @@ def evaluate_candidate(
     axes: list[dict],
     constraints: dict,
 ) -> dict:
-    """Step 4: 候補を各軸で評価する。"""
+    """Step 4: 候補を各軸で評価する。
+
+    candidate に solution_catalog が含まれていれば、
+    補助コンテキストとして LLM に渡す。
+    """
     prompt = _load_prompt("evaluate_candidate.txt")
-    user_message = json.dumps(
-        {
-            "user_query": user_query,
-            "problem_type": problem_type,
-            "axes": [a["axis"] for a in axes],
-            "hard_constraints": constraints.get("hard_constraints", {}),
-            "soft_preferences": constraints.get("soft_preferences", {}),
-            "candidate": candidate,
+
+    msg: dict = {
+        "user_query": user_query,
+        "problem_type": problem_type,
+        "axes": [a["axis"] for a in axes],
+        "hard_constraints": constraints.get("hard_constraints", {}),
+        "soft_preferences": constraints.get("soft_preferences", {}),
+        "candidate": {
+            k: v for k, v in candidate.items() if k != "solution_catalog"
         },
-        ensure_ascii=False,
-    )
-    return call_llm(prompt, user_message)
+    }
+
+    # Optional: Solution Catalog as supplementary context
+    if "solution_catalog" in candidate:
+        msg["solution_catalog"] = candidate["solution_catalog"]
+
+    return call_llm(prompt, json.dumps(msg, ensure_ascii=False))
 
 
 def aggregate_scores(

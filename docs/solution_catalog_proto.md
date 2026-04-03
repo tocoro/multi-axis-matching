@@ -40,6 +40,12 @@ claim / limitation の根拠データの出所。
 - `source_type`: データの出所 (`mock`, `google_places`, `manual`)
 - `source_fields`: 根拠に使った raw_record のフィールド名
 
+## 重要な原則: 不明は limitation にしない
+
+情報が無いだけのケースを hard_limitations に入れてはいけない。
+例: 「営業時間が不明」は limitation ではなく、単に情報欠落。
+limitation は「情報があり、明確に不向きだと判断できる場合」のみ記載する。
+
 ## 今回の位置づけ
 
 - prototype: 手書きサンプル、restaurant 限定

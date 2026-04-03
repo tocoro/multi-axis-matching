@@ -65,6 +65,10 @@
           "source_metadata": {
             "type": "object",
             "additionalProperties": true
+          },
+          "solution_catalog": {
+            "type": "object",
+            "additionalProperties": true
           }
         }
       }

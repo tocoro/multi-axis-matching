@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import logging
 
+from pathlib import Path
+
 from src.adapters.places.base import PlaceRetriever, PlaceSearcher
 from src.adapters.places.mock_places import MockPlaceRetriever, MockPlaceSearcher
+from src.catalog.loader import get_catalog_entry, load_solution_catalog
 from src.evaluator import evaluate
 from src.normalizers.restaurant_normalizer import normalize_restaurant
 from src.services.infer_search_conditions import infer_search_conditions
@@ -25,6 +28,7 @@ def run_restaurant_pipeline(
     place_searcher: PlaceSearcher | None = None,
     place_retriever: PlaceRetriever | None = None,
     max_retrieve: int = DEFAULT_MAX_RETRIEVE,
+    catalog_path: str | Path | None = None,
 ) -> dict:
     """Restaurant パイプラインを実行する。
 
@@ -40,9 +44,10 @@ def run_restaurant_pipeline(
     """
     searcher = place_searcher or MockPlaceSearcher()
     retriever = place_retriever or MockPlaceRetriever()
+    catalog = load_solution_catalog(catalog_path)
 
-    logger.info("=== Pipeline started: %s (fallback=%s) ===",
-                request_id, enable_fallback)
+    logger.info("=== Pipeline started: %s (fallback=%s, catalog=%d) ===",
+                request_id, enable_fallback, len(catalog))
 
     # --- Stage 1: query understanding ---
     logger.info("[1/5] Query understanding")
@@ -112,6 +117,20 @@ def run_restaurant_pipeline(
             logger.exception("Failed at stage 4: normalize %s", detail["source_id"])
             raise
     logger.info("  normalized %d candidates", len(candidates))
+
+    # --- Stage 4.5: attach solution catalog (optional) ---
+    if catalog:
+        attached = 0
+        for candidate in candidates:
+            entry = get_catalog_entry(catalog, candidate["candidate_id"])
+            if entry:
+                candidate["solution_catalog"] = {
+                    "solution_claims": entry.get("solution_claims", []),
+                    "hard_limitations": entry.get("hard_limitations", []),
+                    "evidence": entry.get("evidence", {}),
+                }
+                attached += 1
+        logger.info("  attached catalog to %d/%d candidates", attached, len(candidates))
 
     # --- Stage 5: evaluate ---
     logger.info("[5/5] Evaluate")

@@ -33,6 +33,14 @@ reason の記述:
 - 二値断定（「完全に一致」「全く不一致」）だけでなく、中間表現も使うこと
 - 「部分的に合致」「近接エリアのため一定の適合」「価格帯はやや上振れ」「情報不足のため判断保留」等
 
+Solution Catalog (補助情報):
+- 入力に solution_catalog が含まれる場合、候補がどんな問題に向く/不向きかの補助情報として参照してよい
+- solution_claims は候補の得意領域、hard_limitations は不向きな領域を示す
+- ただし catalog は補助であり、candidate の属性データや user_query の分析を置き換えない
+- catalog と他の情報が矛盾する場合は、理由を見ながら慎重に判断する
+- catalog が無い場合は通常どおり評価する
+- catalog に記載がないことを hard violation とみなさない
+
 返却形式:
 {
   "candidate_id": "string",
