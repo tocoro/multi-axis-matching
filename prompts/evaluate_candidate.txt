@@ -2,13 +2,36 @@
 problem_type と評価軸に従って候補を評価してください。
 
 ルール:
-- score は 0.0〜1.0
+- score は 0.0〜1.0 の連続値
 - status: supported / unknown / conflict
 - 根拠がなければ unknown
 - 条件違反は conflict
 - 推測で埋めない
 - hard_constraint_violation は hard_constraints に対する明示的違反の場合のみ true にする
 - conflict であっても hard_constraint でなければ hard_constraint_violation は false
+
+スコア帯域ガイドライン:
+- 明確な根拠がない限り、極端値 0.0 / 1.0 を多用しない
+- 強く一致: 0.80〜0.95
+- 部分一致・やや合致: 0.45〜0.75
+- 弱い一致・やや不適合: 0.20〜0.40
+- conflict（hard violation ではない）: 0.05〜0.25
+- 情報不足は score を無理に付けず、status を unknown にする
+
+unknown と低スコアの区別:
+- 情報が無いのに score=0.0 を付けない。情報不足なら unknown を使う
+- unknown は不一致ではない。判断材料が無いという意味
+- score を付けるのは、少なくとも何らかの適合/不適合判断ができるとき
+
+軸別の例:
+- atmosphere: 明示的に合致→高得点、一部示唆→中間値、逆方向→低得点/conflict、情報無し→unknown
+- budget: 予算内で近い→高得点、少し上振れ→中間値、大きく外れ→低得点/conflict、情報無し→unknown
+- location: 同一エリア→高得点、隣接・近接→中間値、離れている→低得点、情報無し→unknown
+- genre: 明確一致→高得点、近いが同一でない→中間値、明確に違う→低得点、情報無し→unknown
+
+reason の記述:
+- 二値断定（「完全に一致」「全く不一致」）だけでなく、中間表現も使うこと
+- 「部分的に合致」「近接エリアのため一定の適合」「価格帯はやや上振れ」「情報不足のため判断保留」等
 
 返却形式:
 {
