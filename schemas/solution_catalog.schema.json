@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/solution_catalog.schema.json",
+  "title": "SolutionCatalog",
+  "description": "候補側の意味記述: どんな問題をどの条件で解決できるかを表現する",
+  "type": "object",
+  "required": ["candidate_id", "domain", "solution_claims", "hard_limitations", "evidence", "metadata"],
+  "additionalProperties": false,
+  "properties": {
+    "candidate_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "domain": {
+      "type": "string",
+      "minLength": 1
+    },
+    "solution_claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["problem_pattern", "strength", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "problem_pattern": {
+            "type": "string",
+            "description": "解決できる問題パターン (例: quiet_conversation, budget_dinner)"
+          },
+          "strength": {
+            "type": "string",
+            "enum": ["strong", "medium", "weak"],
+            "description": "この問題に対する適合の強さ"
+          },
+          "conditions": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "この claim が成立する条件 (例: weekday_evening, small_group)"
+          },
+          "reason": {
+            "type": "string",
+            "description": "claim の根拠"
+          }
+        }
+      }
+    },
+    "hard_limitations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["problem_pattern", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "problem_pattern": {
+            "type": "string",
+            "description": "不向きな問題パターン"
+          },
+          "reason": {
+            "type": "string",
+            "description": "不向きな理由"
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["source_type", "source_fields"],
+      "additionalProperties": false,
+      "properties": {
+        "source_type": {
+          "type": "string",
+          "description": "根拠データの出所 (mock, google_places, manual 等)"
+        },
+        "source_fields": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "claim の根拠に使った raw_record のフィールド名"
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "version": { "type": "string" },
+        "created_by": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

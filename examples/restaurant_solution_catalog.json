@@ -1,0 +1,140 @@
+[
+  {
+    "candidate_id": "place_1",
+    "domain": "restaurant",
+    "solution_claims": [
+      {
+        "problem_pattern": "quiet_conversation",
+        "strength": "strong",
+        "conditions": ["weekday_evening", "small_group"],
+        "reason": "静かで落ち着いた雰囲気、会話しやすいという評価が多い"
+      },
+      {
+        "problem_pattern": "budget_italian",
+        "strength": "strong",
+        "conditions": ["lunch", "dinner"],
+        "reason": "イタリアン、平均2500円で予算3000円以内に収まる"
+      },
+      {
+        "problem_pattern": "date_night",
+        "strength": "medium",
+        "conditions": ["dinner"],
+        "reason": "落ち着いた雰囲気で価格帯も適度。ただし個室情報は不明"
+      }
+    ],
+    "hard_limitations": [
+      {
+        "problem_pattern": "large_group_party",
+        "reason": "静かな雰囲気の店のため大人数の宴会には不向き"
+      },
+      {
+        "problem_pattern": "late_night_dining",
+        "reason": "営業時間の情報がなく、深夜営業は不明"
+      }
+    ],
+    "evidence": {
+      "source_type": "mock",
+      "source_fields": ["atmosphere_text", "review_summary", "price_text", "category"]
+    },
+    "metadata": {
+      "version": "proto-v1",
+      "created_by": "manual"
+    }
+  },
+  {
+    "candidate_id": "place_2",
+    "domain": "restaurant",
+    "solution_claims": [
+      {
+        "problem_pattern": "casual_drinks",
+        "strength": "strong",
+        "conditions": ["evening", "friends"],
+        "reason": "賑やかでカジュアルなバー、友人同士で楽しめる"
+      },
+      {
+        "problem_pattern": "budget_meal",
+        "strength": "strong",
+        "conditions": ["anytime"],
+        "reason": "平均1500円と非常にリーズナブル"
+      }
+    ],
+    "hard_limitations": [
+      {
+        "problem_pattern": "quiet_conversation",
+        "reason": "賑やかな雰囲気のため、静かに話したい場合には不向き"
+      },
+      {
+        "problem_pattern": "italian_cuisine",
+        "reason": "バーであり、イタリアン料理を提供する店ではない"
+      }
+    ],
+    "evidence": {
+      "source_type": "mock",
+      "source_fields": ["atmosphere_text", "review_summary", "price_text", "category"]
+    },
+    "metadata": {
+      "version": "proto-v1",
+      "created_by": "manual"
+    }
+  },
+  {
+    "candidate_id": "place_3",
+    "domain": "restaurant",
+    "solution_claims": [
+      {
+        "problem_pattern": "quiet_italian",
+        "strength": "strong",
+        "conditions": ["dinner", "small_group"],
+        "reason": "静かな隠れ家的イタリアン、料理の質が高いと評判"
+      },
+      {
+        "problem_pattern": "budget_italian",
+        "strength": "strong",
+        "conditions": ["lunch", "dinner"],
+        "reason": "平均2000円でリーズナブルなイタリアン"
+      },
+      {
+        "problem_pattern": "date_night",
+        "strength": "strong",
+        "conditions": ["dinner"],
+        "reason": "隠れ家的空間で雰囲気が良く、料理の質も高い"
+      }
+    ],
+    "hard_limitations": [
+      {
+        "problem_pattern": "ebisu_area",
+        "reason": "中目黒に位置しており、恵比寿エリア指定の場合は不適合"
+      }
+    ],
+    "evidence": {
+      "source_type": "mock",
+      "source_fields": ["atmosphere_text", "review_summary", "price_text", "category", "nearest_station"]
+    },
+    "metadata": {
+      "version": "proto-v1",
+      "created_by": "manual"
+    }
+  },
+  {
+    "candidate_id": "place_4",
+    "domain": "restaurant",
+    "solution_claims": [
+      {
+        "problem_pattern": "calm_atmosphere",
+        "strength": "weak",
+        "conditions": [],
+        "reason": "落ち着いた雰囲気とだけ記載があるが、詳細不明"
+      }
+    ],
+    "hard_limitations": [],
+    "evidence": {
+      "source_type": "mock",
+      "source_fields": ["atmosphere_text"]
+    },
+    "metadata": {
+      "version": "proto-v1",
+      "created_by": "manual",
+      "note": "情報欠落が多い候補。claims はごく限定的"
+    }
+  }
+]
