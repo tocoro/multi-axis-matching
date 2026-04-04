@@ -210,6 +210,29 @@ def _pipeline_mock(system_prompt: str, user_message: str) -> dict:
                 axis["score"] = 0.5
                 axis["reason"] = "No specific atmosphere preference"
 
+    # Solution Catalog の有無で reason / score を補助的に調整
+    has_catalog = "solution_catalog" in parsed
+    if has_catalog:
+        catalog = parsed["solution_catalog"]
+        claim_patterns = {
+            c["problem_pattern"] for c in catalog.get("solution_claims", [])
+        }
+        lim_patterns = {
+            l["problem_pattern"] for l in catalog.get("hard_limitations", [])
+        }
+        for axis in data["axis_scores"]:
+            # atmosphere: quiet_conversation claim があれば reason 補強 + 微増
+            if axis["axis"] == "atmosphere" and axis["status"] == "supported":
+                if "quiet_conversation" in claim_patterns or "quiet_italian" in claim_patterns:
+                    axis["score"] = min(axis["score"] + 0.05, 0.95)
+                    axis["reason"] += " (catalog: quiet_conversation claim)"
+            # location: ebisu_area limitation があれば reason 補強 + 微減
+            if axis["axis"] == "location" and axis["status"] == "conflict":
+                if "ebisu_area" in lim_patterns:
+                    axis["score"] = max(axis["score"] - 0.05, 0.05)
+                    axis["reason"] += " (catalog: ebisu_area limitation)"
+        data["summary_reason"] += " [catalog referenced]"
+
     return {"candidate_id": cid, **data}
 
 
