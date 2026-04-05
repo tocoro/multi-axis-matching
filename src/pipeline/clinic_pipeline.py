@@ -33,7 +33,12 @@ def run_clinic_pipeline(
     searcher = place_searcher or MockClinicSearcher()
     retriever = place_retriever or MockClinicRetriever()
 
-    logger.info("=== Clinic pipeline started: %s ===", request_id)
+    from src.domain.profiles import get_domain_profile
+    profile = get_domain_profile("clinic")
+    logger.info("=== Clinic pipeline started: %s (domain=%s, risk=%s) ===",
+                request_id,
+                profile.domain_name if profile else "unknown",
+                profile.default_problem_type.risk_level if profile else "unknown")
 
     # --- Stage 1: query understanding (LLM に任せる、条件抽出は最小) ---
     conditions: dict = {}
@@ -91,6 +96,13 @@ def run_clinic_pipeline(
 
     response["search_diagnostics"] = search_diagnostics
     response["candidate_sources"] = {c["candidate_id"]: c for c in candidates}
+
+    if profile:
+        response["domain_profile"] = {
+            "domain": profile.domain_name,
+            "risk_level": profile.default_problem_type.risk_level,
+            "example_axes": profile.default_problem_type.example_axes,
+        }
 
     logger.info("=== Clinic pipeline complete: %d ranked ===",
                 len(response["ranking"]))

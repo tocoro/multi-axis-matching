@@ -46,8 +46,13 @@ def run_restaurant_pipeline(
     retriever = place_retriever or MockPlaceRetriever()
     catalog = load_solution_catalog(catalog_path)
 
-    logger.info("=== Pipeline started: %s (fallback=%s, catalog=%d) ===",
-                request_id, enable_fallback, len(catalog))
+    from src.domain.profiles import get_domain_profile
+    profile = get_domain_profile("restaurant")
+    logger.info("=== Pipeline started: %s (domain=%s, risk=%s, fallback=%s, catalog=%d) ===",
+                request_id,
+                profile.domain_name if profile else "unknown",
+                profile.default_problem_type.risk_level if profile else "unknown",
+                enable_fallback, len(catalog))
 
     # --- Stage 1: query understanding ---
     logger.info("[1/5] Query understanding")
@@ -152,6 +157,13 @@ def run_restaurant_pipeline(
     response["candidate_sources"] = {
         c["candidate_id"]: c for c in candidates
     }
+
+    if profile:
+        response["domain_profile"] = {
+            "domain": profile.domain_name,
+            "risk_level": profile.default_problem_type.risk_level,
+            "example_axes": profile.default_problem_type.example_axes,
+        }
 
     logger.info("=== Pipeline complete: %d candidates ranked ===",
                 len(response["ranking"]))
