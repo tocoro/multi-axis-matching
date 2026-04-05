@@ -6,11 +6,9 @@ import logging
 
 from pathlib import Path
 
-from src.adapters.places.base import PlaceRetriever, PlaceSearcher
-from src.adapters.places.mock_places import MockPlaceRetriever, MockPlaceSearcher
 from src.catalog.loader import get_catalog_entry, load_solution_catalog
+from src.domain.registry import get_adapter_binding
 from src.evaluator import evaluate
-from src.normalizers.restaurant_normalizer import normalize_restaurant
 from src.services.infer_search_conditions import infer_search_conditions
 
 logger = logging.getLogger(__name__)
@@ -42,8 +40,10 @@ def run_restaurant_pipeline(
     Returns:
         evaluate() の response に search_diagnostics を付加した dict。
     """
-    searcher = place_searcher or MockPlaceSearcher()
-    retriever = place_retriever or MockPlaceRetriever()
+    binding = get_adapter_binding("restaurant")
+    searcher = place_searcher or binding.searcher_factory()
+    retriever = place_retriever or binding.retriever_factory()
+    normalize_fn = binding.normalizer_fn
     catalog = load_solution_catalog(catalog_path)
 
     from src.domain.profiles import get_domain_profile
@@ -116,7 +116,7 @@ def run_restaurant_pipeline(
     candidates = []
     for detail in retrieved:
         try:
-            candidate = normalize_restaurant(detail)
+            candidate = normalize_fn(detail)
             candidates.append(candidate)
         except Exception:
             logger.exception("Failed at stage 4: normalize %s", detail["source_id"])

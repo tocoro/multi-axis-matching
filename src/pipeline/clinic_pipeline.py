@@ -8,9 +8,8 @@ from __future__ import annotations
 
 import logging
 
-from src.adapters.clinic.mock_clinic import MockClinicRetriever, MockClinicSearcher
+from src.domain.registry import get_adapter_binding
 from src.evaluator import evaluate
-from src.normalizers.clinic_normalizer import normalize_clinic
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +29,10 @@ def run_clinic_pipeline(
 
     共通 evaluator を再利用し、clinic ドメインの candidate を評価する。
     """
-    searcher = place_searcher or MockClinicSearcher()
-    retriever = place_retriever or MockClinicRetriever()
+    binding = get_adapter_binding("clinic")
+    searcher = place_searcher or binding.searcher_factory()
+    retriever = place_retriever or binding.retriever_factory()
+    normalize_fn = binding.normalizer_fn
 
     from src.domain.profiles import get_domain_profile
     profile = get_domain_profile("clinic")
@@ -81,7 +82,7 @@ def run_clinic_pipeline(
     logger.info("[4/5] Normalize")
     candidates = []
     for detail in retrieved:
-        candidate = normalize_clinic(detail)
+        candidate = normalize_fn(detail)
         candidates.append(candidate)
     logger.info("  normalized %d candidates", len(candidates))
 
