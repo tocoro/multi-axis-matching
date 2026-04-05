@@ -1,0 +1,137 @@
+[
+  {
+    "candidate_id": "clinic_1",
+    "domain": "clinic",
+    "solution_claims": [
+      {
+        "problem_pattern": "after_work_visit",
+        "strength": "strong",
+        "conditions": ["weekday"],
+        "reason": "平日20時まで営業、仕事帰りに受診しやすい"
+      },
+      {
+        "problem_pattern": "general_internal_medicine",
+        "strength": "strong",
+        "conditions": [],
+        "reason": "内科・一般診療を提供"
+      },
+      {
+        "problem_pattern": "insurance_covered_visit",
+        "strength": "strong",
+        "conditions": [],
+        "reason": "保険適用"
+      },
+      {
+        "problem_pattern": "same_day_consultation",
+        "strength": "strong",
+        "conditions": [],
+        "reason": "当日受診可能"
+      }
+    ],
+    "hard_limitations": [
+      {
+        "problem_pattern": "not_for_specialized_cardiology",
+        "reason": "循環器専門ではなく、高度な心臓疾患には対応しにくい"
+      }
+    ],
+    "evidence": {
+      "source_type": "mock",
+      "source_fields": ["specialties", "hours_text", "accepts_insurance", "same_day_available"]
+    },
+    "metadata": {
+      "version": "proto-v1",
+      "created_by": "manual",
+      "note": "demo 用 prototype。医療助言を目的としていない"
+    }
+  },
+  {
+    "candidate_id": "clinic_2",
+    "domain": "clinic",
+    "solution_claims": [
+      {
+        "problem_pattern": "general_internal_medicine",
+        "strength": "strong",
+        "conditions": [],
+        "reason": "内科・消化器内科を提供、消化器系に詳しい専門医"
+      },
+      {
+        "problem_pattern": "insurance_covered_visit",
+        "strength": "strong",
+        "conditions": [],
+        "reason": "保険適用"
+      }
+    ],
+    "hard_limitations": [
+      {
+        "problem_pattern": "not_for_after_work",
+        "reason": "平日18時までの営業のため、仕事帰りの受診が難しい"
+      },
+      {
+        "problem_pattern": "no_same_day",
+        "reason": "当日受診不可、要予約"
+      }
+    ],
+    "evidence": {
+      "source_type": "mock",
+      "source_fields": ["specialties", "hours_text", "accepts_insurance", "same_day_available"]
+    },
+    "metadata": {
+      "version": "proto-v1",
+      "created_by": "manual"
+    }
+  },
+  {
+    "candidate_id": "clinic_3",
+    "domain": "clinic",
+    "solution_claims": [
+      {
+        "problem_pattern": "insurance_covered_visit",
+        "strength": "strong",
+        "conditions": [],
+        "reason": "保険適用"
+      },
+      {
+        "problem_pattern": "same_day_consultation",
+        "strength": "strong",
+        "conditions": [],
+        "reason": "当日受診可能"
+      }
+    ],
+    "hard_limitations": [
+      {
+        "problem_pattern": "no_internal_medicine",
+        "reason": "皮膚科専門であり、内科診療は提供していない"
+      }
+    ],
+    "evidence": {
+      "source_type": "mock",
+      "source_fields": ["specialties", "hours_text", "accepts_insurance", "same_day_available"]
+    },
+    "metadata": {
+      "version": "proto-v1",
+      "created_by": "manual"
+    }
+  },
+  {
+    "candidate_id": "clinic_4",
+    "domain": "clinic",
+    "solution_claims": [
+      {
+        "problem_pattern": "general_visit",
+        "strength": "weak",
+        "conditions": [],
+        "reason": "診療所であることのみ判明。詳細不明"
+      }
+    ],
+    "hard_limitations": [],
+    "evidence": {
+      "source_type": "mock",
+      "source_fields": []
+    },
+    "metadata": {
+      "version": "proto-v1",
+      "created_by": "manual",
+      "note": "情報欠落が多い候補。limitation を書けるだけの情報がない"
+    }
+  }
+]

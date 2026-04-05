@@ -65,7 +65,7 @@ CLINIC_PROFILE = DomainProfile(
     normalizer_name="clinic_normalizer",
     search_adapter_name="MockClinicSearcher",
     retriever_name="MockClinicRetriever",
-    supports_solution_catalog=False,
+    supports_solution_catalog=True,
     description="Clinic matching (mock-only, demo)",
 )
 
