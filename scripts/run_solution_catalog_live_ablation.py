@@ -150,6 +150,24 @@ def build_artifact_directory_summary(index_items: list[dict]) -> dict:
             "stable_signals": stable,
             "run_coverage": dict(verdict_counts),
         },
+        "anomaly_flags": _build_anomaly_flags(verdict_counts),
+    }
+
+
+def _build_anomaly_flags(verdict_counts: dict) -> dict:
+    ranking = verdict_counts.get("ranking_changed", 0) > 0
+    unknown = verdict_counts.get("unknown_reduced", 0) > 0
+    disq = verdict_counts.get("disqualified_changed", 0) > 0
+    conf_no_reason = (
+        verdict_counts.get("confidence_changed", 0) > 0
+        and verdict_counts.get("reason_changed", 0) == 0
+    )
+    return {
+        "ranking_changed_present": ranking,
+        "unknown_reduced_present": unknown,
+        "disqualified_changed_present": disq,
+        "confidence_changed_without_reason_changed": conf_no_reason,
+        "needs_manual_review": ranking or unknown or disq or conf_no_reason,
     }
 
 
@@ -227,6 +245,17 @@ def main() -> int:
         dom = ",".join(ts.get("dominant_changes", [])) or "none"
         stb = ",".join(ts.get("stable_signals", [])) or "none"
         print(f"Directory trends: dominant={dom} stable={stb}")
+
+        af = summary.get("anomaly_flags", {})
+        yn = lambda b: "yes" if b else "no"
+        print(
+            f"Directory anomaly flags: "
+            f"manual_review={yn(af.get('needs_manual_review'))} "
+            f"ranking_changed={yn(af.get('ranking_changed_present'))} "
+            f"unknown_reduced={yn(af.get('unknown_reduced_present'))} "
+            f"disqualified_changed={yn(af.get('disqualified_changed_present'))} "
+            f"confidence_without_reason={yn(af.get('confidence_changed_without_reason_changed'))}"
+        )
 
     return 0
 

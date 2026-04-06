@@ -267,3 +267,58 @@ class TestTrendSummary:
         stb = ",".join(ts["stable_signals"]) or "none"
         line = f"Directory trends: dominant={dom} stable={stb}"
         assert "Directory trends:" in line
+
+
+class TestAnomalyFlags:
+    def _make_summary(self):
+        from scripts.run_solution_catalog_live_ablation import (
+            run_live_ablation, build_artifact_index, build_artifact_directory_summary,
+        )
+        from unittest.mock import patch
+        from tests.test_solution_catalog_ablation import _ablation_llm_mock
+
+        items = []
+        for i in range(2):
+            with patch("src.evaluator.call_llm", side_effect=_ablation_llm_mock):
+                result = run_live_ablation(f"テスト{i}", "mock")
+            items.append(build_artifact_index(result, f"/tmp/c{i}.json"))
+        return build_artifact_directory_summary(items)
+
+    def test_directory_summary_has_anomaly_flags(self):
+        s = self._make_summary()
+        assert "anomaly_flags" in s
+
+    def test_anomaly_flags_false_for_normal_mock(self):
+        s = self._make_summary()
+        af = s["anomaly_flags"]
+        assert af["ranking_changed_present"] is False
+        assert af["unknown_reduced_present"] is False
+        assert af["disqualified_changed_present"] is False
+        assert af["needs_manual_review"] is False
+
+    def test_anomaly_manual_review_true_when_unknown_reduced(self):
+        from scripts.run_solution_catalog_live_ablation import _build_anomaly_flags
+        vc = {"reason_changed": 1, "score_changed": 1, "confidence_changed": 0,
+              "ranking_changed": 0, "unknown_reduced": 1, "disqualified_changed": 0}
+        af = _build_anomaly_flags(vc)
+        assert af["unknown_reduced_present"] is True
+        assert af["needs_manual_review"] is True
+
+    def test_anomaly_manual_review_true_when_ranking_changed(self):
+        from scripts.run_solution_catalog_live_ablation import _build_anomaly_flags
+        vc = {"reason_changed": 1, "score_changed": 1, "confidence_changed": 0,
+              "ranking_changed": 1, "unknown_reduced": 0, "disqualified_changed": 0}
+        af = _build_anomaly_flags(vc)
+        assert af["ranking_changed_present"] is True
+        assert af["needs_manual_review"] is True
+
+    def test_cli_anomaly_line_format(self):
+        s = self._make_summary()
+        af = s["anomaly_flags"]
+        yn = lambda b: "yes" if b else "no"
+        line = (
+            f"Directory anomaly flags: "
+            f"manual_review={yn(af['needs_manual_review'])} "
+            f"ranking_changed={yn(af['ranking_changed_present'])}"
+        )
+        assert "Directory anomaly flags:" in line
