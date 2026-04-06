@@ -220,3 +220,50 @@ class TestDirectorySummary:
         items = [_json.loads(f.read_text()) for f in sorted(tmp_path.glob("*.index.json"))]
         summary = build_artifact_directory_summary(items)
         assert summary["total_runs"] == 3
+
+
+class TestTrendSummary:
+    def _make_summary(self):
+        from scripts.run_solution_catalog_live_ablation import (
+            run_live_ablation, build_artifact_index, build_artifact_directory_summary,
+        )
+        from unittest.mock import patch
+        from tests.test_solution_catalog_ablation import _ablation_llm_mock
+        import json as _json
+
+        items = []
+        for i in range(2):
+            with patch("src.evaluator.call_llm", side_effect=_ablation_llm_mock):
+                result = run_live_ablation(f"テスト{i}", "mock")
+            items.append(build_artifact_index(result, f"/tmp/c{i}.json"))
+        return build_artifact_directory_summary(items)
+
+    def test_directory_summary_has_trend_summary(self):
+        s = self._make_summary()
+        assert "trend_summary" in s
+
+    def test_trend_summary_run_coverage_matches_verdict_counts(self):
+        s = self._make_summary()
+        assert s["trend_summary"]["run_coverage"] == s["verdict_counts"]
+
+    def test_trend_summary_stable_signals_include_zero_count_keys(self):
+        s = self._make_summary()
+        ts = s["trend_summary"]
+        vc = s["verdict_counts"]
+        for k in ts["stable_signals"]:
+            assert vc[k] == 0
+
+    def test_trend_summary_dominant_changes_include_positive_count_keys(self):
+        s = self._make_summary()
+        ts = s["trend_summary"]
+        vc = s["verdict_counts"]
+        for k in ts["dominant_changes"]:
+            assert vc[k] > 0
+
+    def test_cli_trend_line_format(self):
+        s = self._make_summary()
+        ts = s["trend_summary"]
+        dom = ",".join(ts["dominant_changes"]) or "none"
+        stb = ",".join(ts["stable_signals"]) or "none"
+        line = f"Directory trends: dominant={dom} stable={stb}"
+        assert "Directory trends:" in line

@@ -132,12 +132,24 @@ def build_artifact_directory_summary(index_items: list[dict]) -> dict:
         for idx in index_items
     ]
 
+    # Trend summary
+    dominant = sorted(
+        [k for k in verdict_keys if verdict_counts[k] > 0],
+        key=lambda k: (-verdict_counts[k], k),
+    )
+    stable = [k for k in verdict_keys if verdict_counts[k] == 0]
+
     return {
         "total_runs": len(index_items),
         "models": models,
         "queries": queries_seen,
         "verdict_counts": verdict_counts,
         "artifacts": artifacts,
+        "trend_summary": {
+            "dominant_changes": dominant,
+            "stable_signals": stable,
+            "run_coverage": dict(verdict_counts),
+        },
     }
 
 
@@ -210,6 +222,11 @@ def main() -> int:
         print(f"\nSaved full result to: {out_path}")
         print(f"Saved index to: {index_path}")
         print(f"Updated directory summary: {summary_path}")
+
+        ts = summary.get("trend_summary", {})
+        dom = ",".join(ts.get("dominant_changes", [])) or "none"
+        stb = ",".join(ts.get("stable_signals", [])) or "none"
+        print(f"Directory trends: dominant={dom} stable={stb}")
 
     return 0
 
