@@ -60,7 +60,7 @@ def build_review_summary(with_result: dict, without_result: dict, diff: dict) ->
         if dw != dwo:
             disq_changed.append({"candidate_id": cid, "with": dw, "without": dwo})
 
-    return {
+    result = {
         "ranking": {
             "changed": ranking_changed,
             "note": "ranking changed" if ranking_changed else "ranking unchanged",
@@ -82,7 +82,16 @@ def build_review_summary(with_result: dict, without_result: dict, diff: dict) ->
         "disqualified": {
             "changed_candidates": disq_changed,
         },
+        "quick_verdict": {
+            "ranking_changed": ranking_changed,
+            "reason_changed": len(reason_entries) > 0,
+            "score_changed": len(score_deltas) > 0,
+            "confidence_changed": len(conf_deltas) > 0,
+            "unknown_reduced": len(unknown_reduced) > 0,
+            "disqualified_changed": len(disq_changed) > 0,
+        },
     }
+    return result
 
 
 def build_cross_domain_review_summary(runs: list[dict]) -> dict:
@@ -189,5 +198,19 @@ def format_review_summary_text(rs: dict, query: str = "", model: str = "") -> st
             lines.append(f"  {c['candidate_id']}: {c['without']} → {c['with']}")
     else:
         lines.append("Disqualified: unchanged")
+
+    # Quick verdict
+    qv = rs.get("quick_verdict", {})
+    if qv:
+        lines.append("")
+        parts = [
+            f"reason_changed={'yes' if qv.get('reason_changed') else 'no'}",
+            f"score_changed={'yes' if qv.get('score_changed') else 'no'}",
+            f"confidence_changed={'yes' if qv.get('confidence_changed') else 'no'}",
+            f"ranking_changed={'yes' if qv.get('ranking_changed') else 'no'}",
+            f"unknown_reduced={'yes' if qv.get('unknown_reduced') else 'no'}",
+            f"disqualified_changed={'yes' if qv.get('disqualified_changed') else 'no'}",
+        ]
+        lines.append(f"Verdict: {', '.join(parts)}")
 
     return "\n".join(lines)

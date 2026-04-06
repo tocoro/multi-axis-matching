@@ -56,14 +56,25 @@ def run_live_ablation(
     from src.experiments.review_summary import build_review_summary
     review = build_review_summary(with_result, without_result, diff)
 
+    ts = datetime.now(timezone.utc).isoformat()
+
     return {
         "query": query,
         "model": model,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": ts,
         "with_catalog": with_result,
         "without_catalog": without_result,
         "diff_summary": diff,
         "review_summary": review,
+        "run_metadata": {
+            "query": query,
+            "model": model,
+            "timestamp": ts,
+            "catalog_mode": "with_vs_without",
+            "candidate_source": "unknown",
+            "is_live_llm": True,
+            "review_summary_version": 1,
+        },
         "notes": {
             "run_purpose": "catalog live ablation",
             "interpretation_caution": "single run is not conclusive",

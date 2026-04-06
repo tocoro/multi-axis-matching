@@ -117,3 +117,33 @@ class TestTextFormatting:
         r = run_ablation("fmt-2", "テスト", llm_mock_fn=_ablation_llm_mock)
         text = format_review_summary_text(r["review_summary"])
         assert "unchanged" in text.lower()
+
+    def test_format_includes_verdict_line(self):
+        r = run_ablation("fmt-3", "恵比寿で静かに話せるイタリアン。予算は3000円以内", llm_mock_fn=_ablation_llm_mock)
+        text = format_review_summary_text(r["review_summary"])
+        assert "Verdict:" in text
+
+    def test_verdict_shows_unknown_reduced_no_for_mock(self):
+        r = run_ablation("fmt-4", "恵比寿で静かに話せるイタリアン。予算は3000円以内", llm_mock_fn=_ablation_llm_mock)
+        text = format_review_summary_text(r["review_summary"])
+        assert "unknown_reduced=no" in text
+
+
+# ===================================================================
+# D. Quick verdict
+# ===================================================================
+
+
+class TestQuickVerdict:
+    def test_quick_verdict_exists(self):
+        r = run_ablation("qv-1", "恵比寿で静かに話せるイタリアン", llm_mock_fn=_ablation_llm_mock)
+        assert "quick_verdict" in r["review_summary"]
+
+    def test_quick_verdict_matches_sections(self):
+        r = run_ablation("qv-2", "恵比寿で静かに話せるイタリアン。予算は3000円以内", llm_mock_fn=_ablation_llm_mock)
+        rs = r["review_summary"]
+        qv = rs["quick_verdict"]
+        assert qv["ranking_changed"] == rs["ranking"]["changed"]
+        assert qv["reason_changed"] == (len(rs["reason"]["changed_candidates"]) > 0)
+        assert qv["score_changed"] == (len(rs["score"]["changed_candidates"]) > 0)
+        assert qv["unknown_reduced"] == (len(rs["unknown"]["reduced_candidates"]) > 0)
