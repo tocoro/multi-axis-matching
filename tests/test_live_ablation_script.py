@@ -505,3 +505,110 @@ class TestReviewDigest:
         s = self._make_summary()
         text = format_directory_summary_text(s)
         assert "Review digest:" in text
+
+
+class TestComparisonStats:
+    def _make_summary(self):
+        from scripts.run_solution_catalog_live_ablation import (
+            run_live_ablation, build_artifact_index, build_artifact_directory_summary,
+        )
+        from unittest.mock import patch
+        from tests.test_solution_catalog_ablation import _ablation_llm_mock
+        items = []
+        for i in range(2):
+            with patch("src.evaluator.call_llm", side_effect=_ablation_llm_mock):
+                result = run_live_ablation(f"テスト{i}", "mock")
+            items.append(build_artifact_index(result, f"/tmp/c{i}.json"))
+        return build_artifact_directory_summary(items)
+
+    def test_directory_summary_has_comparison_stats(self):
+        s = self._make_summary()
+        assert "comparison_stats" in s
+
+    def test_comparison_stats_total_rows_matches(self):
+        s = self._make_summary()
+        assert s["comparison_stats"]["total_rows"] == len(s["comparison_rows"])
+
+    def test_comparison_stats_manual_review_counted(self):
+        s = self._make_summary()
+        expected = sum(1 for r in s["comparison_rows"] if r.get("manual_review"))
+        assert s["comparison_stats"]["manual_review_rows"] == expected
+
+
+class TestFlaggedRows:
+    def _make_summary_with_flag(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        items = [
+            {"timestamp": "t1", "model": "m", "artifact_path": "/a",
+             "quick_verdict": {"reason_changed": True, "score_changed": True,
+                               "confidence_changed": False, "ranking_changed": False,
+                               "unknown_reduced": False, "disqualified_changed": False}},
+            {"timestamp": "t2", "model": "m", "artifact_path": "/b",
+             "quick_verdict": {"reason_changed": False, "score_changed": False,
+                               "confidence_changed": True, "ranking_changed": False,
+                               "unknown_reduced": False, "disqualified_changed": False}},
+        ]
+        return build_artifact_directory_summary(items)
+
+    def test_directory_summary_has_flagged_rows(self):
+        s = self._make_summary_with_flag()
+        assert "flagged_rows" in s
+
+    def test_flagged_rows_subset_of_comparison_rows(self):
+        s = self._make_summary_with_flag()
+        flagged_paths = {r["artifact_path"] for r in s["flagged_rows"]}
+        all_paths = {r["artifact_path"] for r in s["comparison_rows"]}
+        assert flagged_paths.issubset(all_paths)
+
+    def test_flagged_rows_only_manual_review_true(self):
+        s = self._make_summary_with_flag()
+        for r in s["flagged_rows"]:
+            assert r["manual_review"] is True
+        # /b has confidence_changed without reason → flagged
+        assert any(r["artifact_path"] == "/b" for r in s["flagged_rows"])
+        # /a has reason_changed, no anomaly → not flagged
+        assert not any(r["artifact_path"] == "/a" for r in s["flagged_rows"])
+
+
+class TestFlaggedRowsText:
+    def test_format_includes_flagged_rows_header(self):
+        from scripts.run_solution_catalog_live_ablation import (
+            build_artifact_directory_summary, format_directory_summary_text,
+        )
+        items = [
+            {"timestamp": "t1", "model": "m", "artifact_path": "/a",
+             "quick_verdict": {"reason_changed": False, "score_changed": False,
+                               "confidence_changed": True, "ranking_changed": False,
+                               "unknown_reduced": False, "disqualified_changed": False}},
+        ]
+        s = build_artifact_directory_summary(items)
+        text = format_directory_summary_text(s)
+        assert "Flagged rows:" in text
+
+    def test_format_flagged_rows_none_when_empty(self):
+        from scripts.run_solution_catalog_live_ablation import (
+            build_artifact_directory_summary, format_directory_summary_text,
+        )
+        items = [
+            {"timestamp": "t1", "model": "m", "artifact_path": "/a",
+             "quick_verdict": {"reason_changed": True, "score_changed": True,
+                               "confidence_changed": False, "ranking_changed": False,
+                               "unknown_reduced": False, "disqualified_changed": False}},
+        ]
+        s = build_artifact_directory_summary(items)
+        text = format_directory_summary_text(s)
+        assert "Flagged rows: none" in text
+
+    def test_format_lists_flagged_rows_when_present(self):
+        from scripts.run_solution_catalog_live_ablation import (
+            build_artifact_directory_summary, format_directory_summary_text,
+        )
+        items = [
+            {"timestamp": "t1", "model": "m", "artifact_path": "/flagged",
+             "quick_verdict": {"reason_changed": False, "score_changed": False,
+                               "confidence_changed": True, "ranking_changed": False,
+                               "unknown_reduced": False, "disqualified_changed": False}},
+        ]
+        s = build_artifact_directory_summary(items)
+        text = format_directory_summary_text(s)
+        assert "/flagged" in text

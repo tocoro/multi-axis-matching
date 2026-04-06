@@ -195,8 +195,26 @@ def build_artifact_directory_summary(index_items: list[dict]) -> dict:
         "anomaly_flags": anomaly,
         "latest_artifact": latest,
         "comparison_rows": comparison_rows,
+        "comparison_stats": _build_comparison_stats(comparison_rows),
+        "flagged_rows": [r for r in comparison_rows if r.get("manual_review")],
         "review_digest": digest,
     }
+
+
+def _build_comparison_stats(rows: list[dict]) -> dict:
+    keys = [
+        ("manual_review_rows", "manual_review"),
+        ("reason_changed_rows", "reason_changed"),
+        ("score_changed_rows", "score_changed"),
+        ("confidence_changed_rows", "confidence_changed"),
+        ("ranking_changed_rows", "ranking_changed"),
+        ("unknown_reduced_rows", "unknown_reduced"),
+        ("disqualified_changed_rows", "disqualified_changed"),
+    ]
+    stats: dict = {"total_rows": len(rows)}
+    for stat_key, row_key in keys:
+        stats[stat_key] = sum(1 for r in rows if r.get(row_key))
+    return stats
 
 
 def _build_review_digest(verdict_counts: dict, anomaly_flags: dict) -> list[str]:
@@ -268,6 +286,16 @@ def format_directory_summary_text(summary: dict) -> str:
         for d in digest:
             lines.append(f"- {d}")
         lines.append("")
+
+    # Flagged rows
+    flagged = summary.get("flagged_rows", [])
+    if flagged:
+        lines.append("Flagged rows:")
+        for f in flagged:
+            lines.append(f"- {f.get('timestamp', '')} | {f.get('model', '')} | {f.get('artifact_path', '')}")
+    else:
+        lines.append("Flagged rows: none")
+    lines.append("")
 
     artifacts = summary.get("artifacts", [])
     if artifacts:
