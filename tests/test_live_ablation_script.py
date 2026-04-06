@@ -408,3 +408,100 @@ class TestSummarizeDir:
         _run_summarize_dir(tmp_path)
         captured = capsys.readouterr()
         assert "=== Live Ablation Directory Summary ===" in captured.out
+
+
+class TestLatestArtifact:
+    def test_directory_summary_has_latest_artifact(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        items = [
+            {"timestamp": "2026-04-06T15:00:00Z", "model": "a", "artifact_path": "/a", "quick_verdict": {}},
+            {"timestamp": "2026-04-06T16:00:00Z", "model": "b", "artifact_path": "/b", "quick_verdict": {}},
+        ]
+        s = build_artifact_directory_summary(items)
+        assert "latest_artifact" in s
+
+    def test_latest_artifact_matches_last_sorted(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        items = [
+            {"timestamp": "2026-04-06T16:00:00Z", "model": "b", "artifact_path": "/b", "quick_verdict": {}},
+            {"timestamp": "2026-04-06T15:00:00Z", "model": "a", "artifact_path": "/a", "quick_verdict": {}},
+        ]
+        s = build_artifact_directory_summary(items)
+        assert s["latest_artifact"]["artifact_path"] == "/b"
+        assert s["latest_artifact"]["timestamp"] == "2026-04-06T16:00:00Z"
+
+    def test_latest_artifact_none_when_empty(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        s = build_artifact_directory_summary([])
+        assert s["latest_artifact"] is None
+
+
+class TestComparisonRows:
+    def test_directory_summary_has_comparison_rows(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        items = [
+            {"timestamp": "t1", "model": "m", "artifact_path": "/a",
+             "quick_verdict": {"reason_changed": True, "score_changed": True,
+                               "confidence_changed": False, "ranking_changed": False,
+                               "unknown_reduced": False, "disqualified_changed": False}},
+        ]
+        s = build_artifact_directory_summary(items)
+        assert "comparison_rows" in s
+        assert len(s["comparison_rows"]) == 1
+
+    def test_comparison_rows_align_with_artifacts(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        items = [
+            {"timestamp": "t2", "model": "b", "artifact_path": "/b", "quick_verdict": {}},
+            {"timestamp": "t1", "model": "a", "artifact_path": "/a", "quick_verdict": {}},
+        ]
+        s = build_artifact_directory_summary(items)
+        art_paths = [a["artifact_path"] for a in s["artifacts"]]
+        row_paths = [r["artifact_path"] for r in s["comparison_rows"]]
+        assert art_paths == row_paths
+
+    def test_comparison_rows_manual_review_rule(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        items = [
+            {"timestamp": "t1", "model": "m", "artifact_path": "/a",
+             "quick_verdict": {"reason_changed": False, "score_changed": False,
+                               "confidence_changed": True, "ranking_changed": False,
+                               "unknown_reduced": False, "disqualified_changed": False}},
+        ]
+        s = build_artifact_directory_summary(items)
+        # confidence changed without reason changed → manual_review=true
+        assert s["comparison_rows"][0]["manual_review"] is True
+
+
+class TestReviewDigest:
+    def _make_summary(self):
+        from scripts.run_solution_catalog_live_ablation import (
+            run_live_ablation, build_artifact_index, build_artifact_directory_summary,
+        )
+        from unittest.mock import patch
+        from tests.test_solution_catalog_ablation import _ablation_llm_mock
+        items = []
+        for i in range(2):
+            with patch("src.evaluator.call_llm", side_effect=_ablation_llm_mock):
+                result = run_live_ablation(f"テスト{i}", "mock")
+            items.append(build_artifact_index(result, f"/tmp/c{i}.json"))
+        return build_artifact_directory_summary(items)
+
+    def test_directory_summary_has_review_digest(self):
+        s = self._make_summary()
+        assert "review_digest" in s
+        assert isinstance(s["review_digest"], list)
+
+    def test_review_digest_contains_fixed_phrases(self):
+        s = self._make_summary()
+        d = s["review_digest"]
+        assert any("ranking" in p for p in d)
+        assert any("reason" in p for p in d)
+        assert any("unknown" in p for p in d)
+        assert any("anomaly" in p for p in d)
+
+    def test_format_directory_summary_text_includes_review_digest(self):
+        from scripts.run_solution_catalog_live_ablation import format_directory_summary_text
+        s = self._make_summary()
+        text = format_directory_summary_text(s)
+        assert "Review digest:" in text

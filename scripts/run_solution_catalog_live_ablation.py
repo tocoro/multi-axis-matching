@@ -144,6 +144,43 @@ def build_artifact_directory_summary(index_items: list[dict]) -> dict:
     )
     stable = [k for k in verdict_keys if verdict_counts[k] == 0]
 
+    # Latest artifact
+    latest = None
+    if artifacts:
+        last = artifacts[-1]
+        latest = {
+            "artifact_path": last["artifact_path"],
+            "timestamp": last["timestamp"],
+            "model": last["model"],
+        }
+
+    # Comparison rows
+    comparison_rows = []
+    for a in artifacts:
+        qv = a.get("quick_verdict", {})
+        rc = qv.get("ranking_changed", False)
+        ur = qv.get("unknown_reduced", False)
+        dc = qv.get("disqualified_changed", False)
+        cc = qv.get("confidence_changed", False)
+        rsc = qv.get("reason_changed", False)
+        comparison_rows.append({
+            "timestamp": a["timestamp"],
+            "model": a["model"],
+            "artifact_path": a["artifact_path"],
+            "reason_changed": rsc,
+            "score_changed": qv.get("score_changed", False),
+            "confidence_changed": cc,
+            "ranking_changed": rc,
+            "unknown_reduced": ur,
+            "disqualified_changed": dc,
+            "manual_review": rc or ur or dc or (cc and not rsc),
+        })
+
+    anomaly = _build_anomaly_flags(verdict_counts)
+
+    # Review digest (fixed phrases only)
+    digest = _build_review_digest(verdict_counts, anomaly)
+
     return {
         "total_runs": len(index_items),
         "models": models,
@@ -155,8 +192,37 @@ def build_artifact_directory_summary(index_items: list[dict]) -> dict:
             "stable_signals": stable,
             "run_coverage": dict(verdict_counts),
         },
-        "anomaly_flags": _build_anomaly_flags(verdict_counts),
+        "anomaly_flags": anomaly,
+        "latest_artifact": latest,
+        "comparison_rows": comparison_rows,
+        "review_digest": digest,
     }
+
+
+def _build_review_digest(verdict_counts: dict, anomaly_flags: dict) -> list[str]:
+    """Fixed phrase のみの review digest を生成する。"""
+    digest = []
+    if verdict_counts.get("ranking_changed", 0) == 0:
+        digest.append("ranking remained stable across runs")
+    else:
+        digest.append("ranking changes detected across runs")
+    if verdict_counts.get("reason_changed", 0) > 0:
+        digest.append("reason changes are present")
+    else:
+        digest.append("no reason changes observed")
+    if verdict_counts.get("score_changed", 0) > 0:
+        digest.append("score changes are present")
+    else:
+        digest.append("no score changes observed")
+    if verdict_counts.get("unknown_reduced", 0) == 0:
+        digest.append("no unknown reduction observed")
+    else:
+        digest.append("unknown reduction detected")
+    if anomaly_flags.get("needs_manual_review"):
+        digest.append("manual-review anomaly detected")
+    else:
+        digest.append("no manual-review anomaly detected")
+    return digest
 
 
 def _build_anomaly_flags(verdict_counts: dict) -> dict:
@@ -194,6 +260,14 @@ def format_directory_summary_text(summary: dict) -> str:
     lines.append(f"Stable signals: {stb}")
     lines.append(f"Manual review: {mr}")
     lines.append("")
+
+    # Review digest
+    digest = summary.get("review_digest", [])
+    if digest:
+        lines.append("Review digest:")
+        for d in digest:
+            lines.append(f"- {d}")
+        lines.append("")
 
     artifacts = summary.get("artifacts", [])
     if artifacts:
