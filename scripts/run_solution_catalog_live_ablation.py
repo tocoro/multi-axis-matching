@@ -53,6 +53,9 @@ def run_live_ablation(
 
     diff = _compute_diff(with_result, without_result)
 
+    from src.experiments.review_summary import build_review_summary
+    review = build_review_summary(with_result, without_result, diff)
+
     return {
         "query": query,
         "model": model,
@@ -60,6 +63,7 @@ def run_live_ablation(
         "with_catalog": with_result,
         "without_catalog": without_result,
         "diff_summary": diff,
+        "review_summary": review,
         "notes": {
             "run_purpose": "catalog live ablation",
             "interpretation_caution": "single run is not conclusive",
@@ -68,27 +72,15 @@ def run_live_ablation(
 
 
 def print_summary(result: dict) -> None:
-    d = result["diff_summary"]
-    print(f"=== Live Ablation: {result['model']} ===")
-    print(f"Query: {result['query']}")
-    print(f"Timestamp: {result['timestamp']}")
-    print()
-    print(f"Ranking changed: {d['ranking_changed']}")
-
-    for label, changes in [
-        ("Score", d["score_changes"]),
-        ("Confidence", d["confidence_changes"]),
-        ("Unknown", d["unknown_changes"]),
-    ]:
-        if changes:
-            print(f"\n{label} changes:")
-            for cid, v in changes.items():
-                print(f"  {cid}: {v.get('without')} → {v.get('with')}")
-
-    if d["reason_changes"]:
-        print("\nReason changes:")
-        for cid, axes in d["reason_changes"].items():
-            print(f"  {cid}: {', '.join(axes)}")
+    from src.experiments.review_summary import format_review_summary_text
+    rs = result.get("review_summary")
+    if rs:
+        print(format_review_summary_text(
+            rs, query=result.get("query", ""), model=result.get("model", "")))
+    else:
+        # Fallback to old format
+        d = result["diff_summary"]
+        print(f"Ranking changed: {d['ranking_changed']}")
 
     if not any([d["score_changes"], d["confidence_changes"],
                 d["unknown_changes"], d["reason_changes"]]):

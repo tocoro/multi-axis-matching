@@ -53,18 +53,29 @@ def run_multi_domain_ablation(
 
         diff = _compute_diff(with_result, without_result)
 
+        from src.experiments.review_summary import build_review_summary
+        review = build_review_summary(with_result, without_result, diff)
+
         runs.append({
             "domain": domain,
             "query": query,
             "with_catalog": with_result,
             "without_catalog": without_result,
             "diff_summary": diff,
+            "review_summary": review,
         })
 
-    # Cross-domain summary
+    # Cross-domain summaries
     cross = _build_cross_domain_summary(runs)
 
-    return {"runs": runs, "cross_domain_summary": cross}
+    from src.experiments.review_summary import build_cross_domain_review_summary
+    cross_review = build_cross_domain_review_summary(runs)
+
+    return {
+        "runs": runs,
+        "cross_domain_summary": cross,
+        "cross_domain_review_summary": cross_review,
+    }
 
 
 def _build_cross_domain_summary(runs: list[dict]) -> dict:

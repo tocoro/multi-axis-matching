@@ -46,11 +46,15 @@ def run_ablation(
 
     diff = _compute_diff(result_with, result_without)
 
+    from src.experiments.review_summary import build_review_summary
+    review = build_review_summary(result_with, result_without, diff)
+
     return {
         "query": user_query,
         "with_catalog": result_with,
         "without_catalog": result_without,
         "diff_summary": diff,
+        "review_summary": review,
     }
 
 
