@@ -77,3 +77,64 @@ class TestRunMetadata:
     def test_run_metadata_catalog_mode_fixed(self):
         result = self._run_live_ablation_mock()
         assert result["run_metadata"]["catalog_mode"] == "with_vs_without"
+
+
+class TestArtifactIndex:
+    def _run_and_index(self):
+        from scripts.run_solution_catalog_live_ablation import run_live_ablation, build_artifact_index
+        from unittest.mock import patch
+        from tests.test_solution_catalog_ablation import _ablation_llm_mock
+        with patch("src.evaluator.call_llm", side_effect=_ablation_llm_mock):
+            result = run_live_ablation("テスト", "mock-model")
+        index = build_artifact_index(result, artifact_path="/tmp/test.json")
+        return result, index
+
+    def test_build_artifact_index_has_required_keys(self):
+        _, index = self._run_and_index()
+        for key in ["query", "model", "timestamp", "artifact_path",
+                     "catalog_mode", "quick_verdict", "top_candidates"]:
+            assert key in index, f"Missing key: {key}"
+
+    def test_build_artifact_index_uses_quick_verdict(self):
+        result, index = self._run_and_index()
+        assert index["quick_verdict"] == result["review_summary"]["quick_verdict"]
+
+    def test_build_artifact_index_top_candidates_are_ids(self):
+        _, index = self._run_and_index()
+        tc = index["top_candidates"]
+        assert isinstance(tc["with_catalog"], list)
+        assert isinstance(tc["without_catalog"], list)
+        assert all(isinstance(c, str) for c in tc["with_catalog"])
+        assert all(isinstance(c, str) for c in tc["without_catalog"])
+
+    def test_out_save_creates_index_file(self, tmp_path):
+        from scripts.run_solution_catalog_live_ablation import run_live_ablation, build_artifact_index
+        from unittest.mock import patch
+        from tests.test_solution_catalog_ablation import _ablation_llm_mock
+        import json as _json
+
+        with patch("src.evaluator.call_llm", side_effect=_ablation_llm_mock):
+            result = run_live_ablation("テスト", "mock-model")
+
+        out_path = tmp_path / "test_result.json"
+        out_path.write_text(_json.dumps(result, ensure_ascii=False, indent=2))
+
+        index = build_artifact_index(result, artifact_path=str(out_path))
+        index_path = out_path.with_suffix(".index.json")
+        index_path.write_text(_json.dumps(index, ensure_ascii=False, indent=2))
+
+        assert out_path.exists()
+        assert index_path.exists()
+
+    def test_index_file_contains_artifact_path(self, tmp_path):
+        from scripts.run_solution_catalog_live_ablation import run_live_ablation, build_artifact_index
+        from unittest.mock import patch
+        from tests.test_solution_catalog_ablation import _ablation_llm_mock
+        import json as _json
+
+        with patch("src.evaluator.call_llm", side_effect=_ablation_llm_mock):
+            result = run_live_ablation("テスト", "mock-model")
+
+        out_path = tmp_path / "full.json"
+        index = build_artifact_index(result, artifact_path=str(out_path))
+        assert index["artifact_path"] == str(out_path)

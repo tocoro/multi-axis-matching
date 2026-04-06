@@ -82,6 +82,25 @@ def run_live_ablation(
     }
 
 
+def build_artifact_index(result: dict, artifact_path: str = "") -> dict:
+    """Full result から比較に必要な最小情報だけを抜き出した index を作る。"""
+    with_ranking = result.get("with_catalog", {}).get("ranking", [])
+    without_ranking = result.get("without_catalog", {}).get("ranking", [])
+
+    return {
+        "query": result.get("query", ""),
+        "model": result.get("model", ""),
+        "timestamp": result.get("timestamp", ""),
+        "artifact_path": artifact_path,
+        "catalog_mode": result.get("run_metadata", {}).get("catalog_mode", "with_vs_without"),
+        "quick_verdict": result.get("review_summary", {}).get("quick_verdict", {}),
+        "top_candidates": {
+            "with_catalog": [e["candidate_id"] for e in with_ranking[:3]],
+            "without_catalog": [e["candidate_id"] for e in without_ranking[:3]],
+        },
+    }
+
+
 def print_summary(result: dict) -> None:
     from src.experiments.review_summary import format_review_summary_text
     rs = result.get("review_summary")
@@ -123,7 +142,17 @@ def main() -> int:
             json.dumps(result, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
-        print(f"\nSaved to {out_path}")
+
+        # Index file
+        index = build_artifact_index(result, artifact_path=str(out_path))
+        index_path = out_path.with_suffix(".index.json")
+        index_path.write_text(
+            json.dumps(index, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        print(f"\nSaved full result to: {out_path}")
+        print(f"Saved index to: {index_path}")
 
     return 0
 
