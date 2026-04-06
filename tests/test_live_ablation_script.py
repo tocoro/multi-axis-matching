@@ -322,3 +322,89 @@ class TestAnomalyFlags:
             f"ranking_changed={yn(af['ranking_changed_present'])}"
         )
         assert "Directory anomaly flags:" in line
+
+
+class TestArtifactOrdering:
+    def test_directory_summary_artifacts_sorted_by_timestamp_model_path(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        items = [
+            {"timestamp": "2026-04-06T16:00:00Z", "model": "b", "artifact_path": "/b", "quick_verdict": {}},
+            {"timestamp": "2026-04-06T15:00:00Z", "model": "a", "artifact_path": "/a", "quick_verdict": {}},
+            {"timestamp": "2026-04-06T15:00:00Z", "model": "a", "artifact_path": "/c", "quick_verdict": {}},
+        ]
+        s = build_artifact_directory_summary(items)
+        paths = [a["artifact_path"] for a in s["artifacts"]]
+        assert paths == ["/a", "/c", "/b"]
+
+
+class TestFormatDirectorySummaryText:
+    def _make_summary(self):
+        from scripts.run_solution_catalog_live_ablation import (
+            run_live_ablation, build_artifact_index, build_artifact_directory_summary,
+        )
+        from unittest.mock import patch
+        from tests.test_solution_catalog_ablation import _ablation_llm_mock
+
+        items = []
+        for i in range(2):
+            with patch("src.evaluator.call_llm", side_effect=_ablation_llm_mock):
+                result = run_live_ablation(f"テスト{i}", "mock")
+            items.append(build_artifact_index(result, f"/tmp/c{i}.json"))
+        return build_artifact_directory_summary(items)
+
+    def test_format_has_header(self):
+        from scripts.run_solution_catalog_live_ablation import format_directory_summary_text
+        text = format_directory_summary_text(self._make_summary())
+        assert "=== Live Ablation Directory Summary ===" in text
+
+    def test_format_shows_manual_review(self):
+        from scripts.run_solution_catalog_live_ablation import format_directory_summary_text
+        text = format_directory_summary_text(self._make_summary())
+        assert "Manual review:" in text
+
+    def test_format_lists_artifacts(self):
+        from scripts.run_solution_catalog_live_ablation import format_directory_summary_text
+        text = format_directory_summary_text(self._make_summary())
+        assert "Artifacts:" in text
+        assert "/tmp/c0.json" in text or "/tmp/c1.json" in text
+
+
+class TestSummarizeDir:
+    def _populate_dir(self, tmp_path):
+        from scripts.run_solution_catalog_live_ablation import (
+            run_live_ablation, build_artifact_index,
+        )
+        from unittest.mock import patch
+        from tests.test_solution_catalog_ablation import _ablation_llm_mock
+        import json as _json
+
+        for i in range(2):
+            with patch("src.evaluator.call_llm", side_effect=_ablation_llm_mock):
+                result = run_live_ablation(f"q{i}", "mock")
+            out = tmp_path / f"case{i}.json"
+            out.write_text(_json.dumps(result))
+            idx = build_artifact_index(result, artifact_path=str(out))
+            out.with_suffix(".index.json").write_text(_json.dumps(idx))
+
+    def test_summarize_dir_writes_index_summary(self, tmp_path):
+        from scripts.run_solution_catalog_live_ablation import _run_summarize_dir
+        self._populate_dir(tmp_path)
+        _run_summarize_dir(tmp_path)
+        assert (tmp_path / "_index_summary.json").exists()
+
+    def test_summarize_dir_uses_only_index_json(self, tmp_path):
+        from scripts.run_solution_catalog_live_ablation import _run_summarize_dir
+        import json as _json
+        self._populate_dir(tmp_path)
+        # Add a non-index JSON that shouldn't be read
+        (tmp_path / "noise.json").write_text('{"not": "an index"}')
+        _run_summarize_dir(tmp_path)
+        summary = _json.loads((tmp_path / "_index_summary.json").read_text())
+        assert summary["total_runs"] == 2  # only index files counted
+
+    def test_summarize_dir_text_contains_header(self, tmp_path, capsys):
+        from scripts.run_solution_catalog_live_ablation import _run_summarize_dir
+        self._populate_dir(tmp_path)
+        _run_summarize_dir(tmp_path)
+        captured = capsys.readouterr()
+        assert "=== Live Ablation Directory Summary ===" in captured.out

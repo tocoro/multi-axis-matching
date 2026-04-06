@@ -121,6 +121,11 @@ def build_artifact_directory_summary(index_items: list[dict]) -> dict:
             if qv.get(k):
                 verdict_counts[k] += 1
 
+    # Sort by timestamp, model, artifact_path for stable ordering
+    sorted_items = sorted(
+        index_items,
+        key=lambda x: (x.get("timestamp", ""), x.get("model", ""), x.get("artifact_path", "")),
+    )
     artifacts = [
         {
             "artifact_path": idx.get("artifact_path", ""),
@@ -129,7 +134,7 @@ def build_artifact_directory_summary(index_items: list[dict]) -> dict:
             "timestamp": idx.get("timestamp", ""),
             "quick_verdict": idx.get("quick_verdict", {}),
         }
-        for idx in index_items
+        for idx in sorted_items
     ]
 
     # Trend summary
@@ -171,6 +176,36 @@ def _build_anomaly_flags(verdict_counts: dict) -> dict:
     }
 
 
+def format_directory_summary_text(summary: dict) -> str:
+    """Directory summary を人間向けテキストに整形する。"""
+    lines = ["=== Live Ablation Directory Summary ==="]
+    lines.append(f"Total runs: {summary.get('total_runs', 0)}")
+    lines.append(f"Models: {', '.join(summary.get('models', []))}")
+    lines.append(f"Queries: {len(summary.get('queries', []))}")
+    lines.append("")
+
+    ts = summary.get("trend_summary", {})
+    dom = ", ".join(ts.get("dominant_changes", [])) or "none"
+    stb = ", ".join(ts.get("stable_signals", [])) or "none"
+    af = summary.get("anomaly_flags", {})
+    mr = "yes" if af.get("needs_manual_review") else "no"
+
+    lines.append(f"Dominant changes: {dom}")
+    lines.append(f"Stable signals: {stb}")
+    lines.append(f"Manual review: {mr}")
+    lines.append("")
+
+    artifacts = summary.get("artifacts", [])
+    if artifacts:
+        lines.append("Artifacts:")
+        for a in artifacts:
+            lines.append(f"- {a.get('timestamp', '')} | {a.get('model', '')} | {a.get('artifact_path', '')}")
+    else:
+        lines.append("Artifacts: none")
+
+    return "\n".join(lines)
+
+
 def print_summary(result: dict) -> None:
     from src.experiments.review_summary import format_review_summary_text
     rs = result.get("review_summary")
@@ -187,11 +222,35 @@ def print_summary(result: dict) -> None:
         print("\nNo differences detected")
 
 
+def _run_summarize_dir(dir_path: Path) -> int:
+    """既存ディレクトリの index 群を再集計して summary を表示・保存する。"""
+    index_items = []
+    for idx_file in sorted(dir_path.glob("*.index.json")):
+        try:
+            item = json.loads(idx_file.read_text("utf-8"))
+            index_items.append(item)
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    summary = build_artifact_directory_summary(index_items)
+    print(format_directory_summary_text(summary))
+
+    summary_path = dir_path / "_index_summary.json"
+    summary_path.write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    print(f"\nSaved directory summary to: {summary_path}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Solution Catalog live ablation")
-    parser.add_argument("--query", required=True, help="User query")
+    parser.add_argument("--query", default=None, help="User query")
     parser.add_argument("--model", default="gemini-2.5-flash", help="LLM model")
     parser.add_argument("--out", type=str, default=None, help="Output JSON path")
+    parser.add_argument("--summarize-dir", type=str, default=None,
+                        help="Re-summarize existing artifact directory")
     parser.add_argument("--log-level", default="WARNING",
                         choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     args = parser.parse_args()
@@ -201,6 +260,13 @@ def main() -> int:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         stream=sys.stderr,
     )
+
+    # --summarize-dir mode
+    if args.summarize_dir:
+        return _run_summarize_dir(Path(args.summarize_dir))
+
+    if not args.query:
+        parser.error("--query is required (unless using --summarize-dir)")
 
     result = run_live_ablation(args.query, args.model)
     print_summary(result)
