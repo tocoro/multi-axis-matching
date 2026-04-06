@@ -101,6 +101,46 @@ def build_artifact_index(result: dict, artifact_path: str = "") -> dict:
     }
 
 
+def build_artifact_directory_summary(index_items: list[dict]) -> dict:
+    """複数の index dict から最小一覧 summary を作る。"""
+    models = sorted(set(idx.get("model", "") for idx in index_items))
+    queries_seen: list[str] = []
+    for idx in index_items:
+        q = idx.get("query", "")
+        if q and q not in queries_seen:
+            queries_seen.append(q)
+
+    verdict_keys = [
+        "reason_changed", "score_changed", "confidence_changed",
+        "ranking_changed", "unknown_reduced", "disqualified_changed",
+    ]
+    verdict_counts = {k: 0 for k in verdict_keys}
+    for idx in index_items:
+        qv = idx.get("quick_verdict", {})
+        for k in verdict_keys:
+            if qv.get(k):
+                verdict_counts[k] += 1
+
+    artifacts = [
+        {
+            "artifact_path": idx.get("artifact_path", ""),
+            "query": idx.get("query", ""),
+            "model": idx.get("model", ""),
+            "timestamp": idx.get("timestamp", ""),
+            "quick_verdict": idx.get("quick_verdict", {}),
+        }
+        for idx in index_items
+    ]
+
+    return {
+        "total_runs": len(index_items),
+        "models": models,
+        "queries": queries_seen,
+        "verdict_counts": verdict_counts,
+        "artifacts": artifacts,
+    }
+
+
 def print_summary(result: dict) -> None:
     from src.experiments.review_summary import format_review_summary_text
     rs = result.get("review_summary")
@@ -151,8 +191,25 @@ def main() -> int:
             encoding="utf-8",
         )
 
+        # Directory summary
+        index_dir = out_path.parent
+        index_items = []
+        for idx_file in sorted(index_dir.glob("*.index.json")):
+            try:
+                item = json.loads(idx_file.read_text("utf-8"))
+                index_items.append(item)
+            except (json.JSONDecodeError, OSError):
+                pass
+        summary = build_artifact_directory_summary(index_items)
+        summary_path = index_dir / "_index_summary.json"
+        summary_path.write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
         print(f"\nSaved full result to: {out_path}")
         print(f"Saved index to: {index_path}")
+        print(f"Updated directory summary: {summary_path}")
 
     return 0
 

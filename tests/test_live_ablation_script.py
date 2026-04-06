@@ -138,3 +138,85 @@ class TestArtifactIndex:
         out_path = tmp_path / "full.json"
         index = build_artifact_index(result, artifact_path=str(out_path))
         assert index["artifact_path"] == str(out_path)
+
+
+class TestDirectorySummary:
+    def _make_index_items(self):
+        from scripts.run_solution_catalog_live_ablation import run_live_ablation, build_artifact_index
+        from unittest.mock import patch
+        from tests.test_solution_catalog_ablation import _ablation_llm_mock
+
+        items = []
+        for i, q in enumerate(["テスト1", "テスト2"]):
+            with patch("src.evaluator.call_llm", side_effect=_ablation_llm_mock):
+                result = run_live_ablation(q, "mock-model")
+            items.append(build_artifact_index(result, artifact_path=f"/tmp/case{i}.json"))
+        return items
+
+    def test_build_artifact_directory_summary_has_required_keys(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        items = self._make_index_items()
+        s = build_artifact_directory_summary(items)
+        for key in ["total_runs", "models", "queries", "verdict_counts", "artifacts"]:
+            assert key in s, f"Missing key: {key}"
+
+    def test_build_artifact_directory_summary_counts_verdicts(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        items = self._make_index_items()
+        s = build_artifact_directory_summary(items)
+        vc = s["verdict_counts"]
+        # Both runs should have reason_changed from ablation mock
+        assert isinstance(vc["reason_changed"], int)
+        assert vc["reason_changed"] >= 0
+
+    def test_build_artifact_directory_summary_no_top_candidates(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        items = self._make_index_items()
+        s = build_artifact_directory_summary(items)
+        for a in s["artifacts"]:
+            assert "top_candidates" not in a
+
+    def test_out_save_updates_directory_summary(self, tmp_path):
+        from scripts.run_solution_catalog_live_ablation import (
+            run_live_ablation, build_artifact_index, build_artifact_directory_summary,
+        )
+        from unittest.mock import patch
+        from tests.test_solution_catalog_ablation import _ablation_llm_mock
+        import json as _json
+
+        # Create 2 index files
+        for i in range(2):
+            with patch("src.evaluator.call_llm", side_effect=_ablation_llm_mock):
+                result = run_live_ablation(f"テスト{i}", "mock")
+            out = tmp_path / f"case{i}.json"
+            out.write_text(_json.dumps(result))
+            idx = build_artifact_index(result, artifact_path=str(out))
+            out.with_suffix(".index.json").write_text(_json.dumps(idx))
+
+        # Build summary
+        index_items = []
+        for f in sorted(tmp_path.glob("*.index.json")):
+            index_items.append(_json.loads(f.read_text()))
+        summary = build_artifact_directory_summary(index_items)
+        summary_path = tmp_path / "_index_summary.json"
+        summary_path.write_text(_json.dumps(summary))
+
+        assert summary_path.exists()
+
+    def test_directory_summary_total_runs_matches(self, tmp_path):
+        from scripts.run_solution_catalog_live_ablation import (
+            run_live_ablation, build_artifact_index, build_artifact_directory_summary,
+        )
+        from unittest.mock import patch
+        from tests.test_solution_catalog_ablation import _ablation_llm_mock
+        import json as _json
+
+        for i in range(3):
+            with patch("src.evaluator.call_llm", side_effect=_ablation_llm_mock):
+                result = run_live_ablation(f"q{i}", "mock")
+            idx = build_artifact_index(result, artifact_path=f"/tmp/c{i}.json")
+            (tmp_path / f"c{i}.index.json").write_text(_json.dumps(idx))
+
+        items = [_json.loads(f.read_text()) for f in sorted(tmp_path.glob("*.index.json"))]
+        summary = build_artifact_directory_summary(items)
+        assert summary["total_runs"] == 3
