@@ -3,7 +3,9 @@ problem_type と評価軸に従って候補を評価してください。
 
 ルール:
 - score は 0.0〜1.0 の連続値
-- status: supported / unknown / conflict
+- status は必ず次の3値のいずれか: "supported", "unknown", "conflict"
+- 上記以外の status 値 (例: "partial_support", "partial", "neutral" 等) は使用禁止
+- 部分的な一致は status="supported" + 中間スコアで表現する
 - 根拠がなければ unknown
 - 条件違反は conflict
 - 推測で埋めない
