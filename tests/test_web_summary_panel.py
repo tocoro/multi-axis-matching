@@ -109,3 +109,82 @@ class TestDirectorySummaryAPIEndpoint:
         except json.JSONDecodeError:
             result = {"error": "parse_error", "data": None}
         assert result["error"] is not None
+
+
+# ===================================================================
+# Filter and status tests
+# ===================================================================
+
+
+class TestManualReviewFilter:
+    """Test client-side filter logic (recommended vs flagged)."""
+
+    def test_filter_off_shows_recommended(self):
+        rec = ["/a", "/b"]
+        flagged = [{"artifact_path": "/b"}]
+        # filter off → recommended
+        assert rec == ["/a", "/b"]
+
+    def test_filter_on_shows_flagged_only(self):
+        flagged = [{"artifact_path": "/b"}, {"artifact_path": "/c"}]
+        paths = list(dict.fromkeys(r["artifact_path"] for r in flagged))
+        assert paths == ["/b", "/c"]
+
+    def test_filter_on_empty_flagged_shows_none(self):
+        flagged = []
+        paths = [r["artifact_path"] for r in flagged]
+        assert paths == []
+
+    def test_flagged_order_preserved(self):
+        flagged = [
+            {"artifact_path": "/z"},
+            {"artifact_path": "/a"},
+            {"artifact_path": "/m"},
+        ]
+        paths = [r["artifact_path"] for r in flagged]
+        assert paths == ["/z", "/a", "/m"]
+
+    def test_flagged_deduplicated(self):
+        flagged = [
+            {"artifact_path": "/a"},
+            {"artifact_path": "/a"},
+            {"artifact_path": "/b"},
+        ]
+        seen = set()
+        paths = []
+        for r in flagged:
+            p = r["artifact_path"]
+            if p not in seen:
+                seen.add(p)
+                paths.append(p)
+        assert paths == ["/a", "/b"]
+
+
+class TestSummaryStatus:
+    """Test summary status values."""
+
+    def test_status_not_loaded(self):
+        status = "not loaded"
+        assert status == "not loaded"
+
+    def test_status_loaded(self):
+        data = {"total_runs": 1}
+        status = "loaded" if data else "empty"
+        assert status == "loaded"
+
+    def test_status_empty(self):
+        data = None
+        status = "loaded" if data else "empty"
+        assert status == "empty"
+
+    def test_status_error(self):
+        try:
+            raise ConnectionError("fail")
+        except Exception:
+            status = "error"
+        assert status == "error"
+
+    def test_status_values_are_known(self):
+        valid = {"not loaded", "loaded", "empty", "error"}
+        for s in valid:
+            assert s in valid

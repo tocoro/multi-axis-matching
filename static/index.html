@@ -483,41 +483,99 @@ async function runAblation() {
   }
 }
 
+// Summary state
+let _summaryData = null;
+let _summaryStatus = 'not loaded';
+let _showFlaggedOnly = false;
+
 async function loadSummary() {
   const panel = document.getElementById('summaryPanel');
   try {
     const resp = await fetch('/api/directory-summary');
     const json = await resp.json();
     if (!json.data) {
-      panel.style.display = 'block';
-      panel.innerHTML = '<div class="summary-panel"><h3>Ablation Summary</h3><div class="summary-row"><span class="summary-val" style="color:var(--muted)">No summary available. Run ablation with --out first.</span></div></div>';
+      _summaryData = null;
+      _summaryStatus = 'empty';
+      renderSummaryPanel();
       return;
     }
-    const s = json.data;
-    const gs = s.gate_summary || {};
-    const gateClass = gs.gate_status === 'pass' ? 'gate-pass' : gs.gate_status === 'review_required' ? 'gate-review' : 'gate-empty';
-    const mrYn = gs.manual_review_required ? 'yes' : 'no';
-    const latest = s.latest_artifact ? s.latest_artifact.artifact_path : 'none';
-    const rec = (s.recommended_artifact_paths || []);
-    const recHtml = rec.length
-      ? `<ul class="summary-list">${rec.map(p => `<li>${p}</li>`).join('')}</ul>`
-      : '<span class="summary-val">none</span>';
-    const flagged = (s.flagged_rows || []).length;
-
-    panel.style.display = 'block';
-    panel.innerHTML = `<div class="summary-panel">
-      <h3>Ablation Directory Summary</h3>
-      <div class="summary-row"><span class="summary-label">Gate status</span><span class="summary-val ${gateClass}">${gs.gate_status || 'unknown'}</span></div>
-      <div class="summary-row"><span class="summary-label">Manual review required</span><span class="summary-val">${mrYn}</span></div>
-      <div class="summary-row"><span class="summary-label">Total runs</span><span class="summary-val">${s.total_runs || 0}</span></div>
-      <div class="summary-row"><span class="summary-label">Flagged runs</span><span class="summary-val">${flagged}</span></div>
-      <div class="summary-row"><span class="summary-label">Latest artifact</span><span class="summary-val">${latest}</span></div>
-      <div class="summary-row"><span class="summary-label">Recommended artifacts</span>${recHtml}</div>
-    </div>`;
+    _summaryData = json.data;
+    _summaryStatus = 'loaded';
+    renderSummaryPanel();
   } catch (e) {
-    panel.style.display = 'block';
-    panel.innerHTML = `<div class="summary-panel"><span class="summary-val" style="color:var(--red)">Error loading summary: ${e.message}</span></div>`;
+    _summaryData = null;
+    _summaryStatus = 'error';
+    renderSummaryPanel();
   }
+}
+
+function toggleFlaggedFilter() {
+  _showFlaggedOnly = !_showFlaggedOnly;
+  renderSummaryPanel();
+}
+
+function renderSummaryPanel() {
+  const panel = document.getElementById('summaryPanel');
+  panel.style.display = 'block';
+
+  if (_summaryStatus === 'not loaded') {
+    panel.innerHTML = '';
+    panel.style.display = 'none';
+    return;
+  }
+  if (_summaryStatus === 'empty') {
+    panel.innerHTML = `<div class="summary-panel">
+      <h3>Ablation Summary</h3>
+      <div class="summary-row"><span class="summary-label">Status</span><span class="summary-val" style="color:var(--muted)">empty</span></div>
+      <div class="summary-row"><span class="summary-val" style="color:var(--muted)">No summary available. Run Compare first.</span></div>
+    </div>`;
+    return;
+  }
+  if (_summaryStatus === 'error') {
+    panel.innerHTML = `<div class="summary-panel">
+      <div class="summary-row"><span class="summary-label">Status</span><span class="summary-val" style="color:var(--red)">error</span></div>
+    </div>`;
+    return;
+  }
+
+  const s = _summaryData;
+  const gs = s.gate_summary || {};
+  const gateClass = gs.gate_status === 'pass' ? 'gate-pass' : gs.gate_status === 'review_required' ? 'gate-review' : 'gate-empty';
+  const mrYn = gs.manual_review_required ? 'yes' : 'no';
+  const latest = s.latest_artifact ? s.latest_artifact.artifact_path : 'none';
+  const flaggedRows = s.flagged_rows || [];
+  const rec = s.recommended_artifact_paths || [];
+
+  // Artifact list depends on filter
+  let artifactPaths;
+  if (_showFlaggedOnly) {
+    const seen = new Set();
+    artifactPaths = flaggedRows.map(r => r.artifact_path).filter(p => { if (seen.has(p)) return false; seen.add(p); return true; });
+  } else {
+    artifactPaths = rec;
+  }
+  const artifactHtml = artifactPaths.length
+    ? `<ul class="summary-list">${artifactPaths.map(p => `<li>${p}</li>`).join('')}</ul>`
+    : '<span class="summary-val">none</span>';
+
+  const filterLabel = _showFlaggedOnly ? 'Show all recommended' : 'Show manual-review only';
+  const filterBtn = flaggedRows.length > 0
+    ? `<button class="load-summary-btn" onclick="toggleFlaggedFilter()" style="margin-left:12px">${filterLabel}</button>`
+    : '';
+
+  panel.innerHTML = `<div class="summary-panel">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <h3 style="margin:0">Ablation Directory Summary</h3>
+      <span class="summary-val" style="color:var(--muted);font-size:11px">[${_summaryStatus}]</span>
+      <button class="load-summary-btn" onclick="loadSummary()">Refresh</button>
+    </div>
+    <div class="summary-row"><span class="summary-label">Gate status</span><span class="summary-val ${gateClass}">${gs.gate_status || 'unknown'}</span></div>
+    <div class="summary-row"><span class="summary-label">Manual review required</span><span class="summary-val">${mrYn}</span></div>
+    <div class="summary-row"><span class="summary-label">Total runs</span><span class="summary-val">${s.total_runs || 0}</span></div>
+    <div class="summary-row"><span class="summary-label">Flagged runs</span><span class="summary-val">${flaggedRows.length}</span></div>
+    <div class="summary-row"><span class="summary-label">Latest artifact</span><span class="summary-val">${latest}</span></div>
+    <div class="summary-row"><span class="summary-label">${_showFlaggedOnly ? 'Flagged artifacts' : 'Recommended artifacts'}</span>${filterBtn}${artifactHtml}</div>
+  </div>`;
 }
 
 document.getElementById('query').addEventListener('keydown', e => {
