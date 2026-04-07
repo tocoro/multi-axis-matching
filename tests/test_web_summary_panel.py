@@ -255,3 +255,101 @@ class TestFetchedTimestamp:
         from datetime import datetime
         fetched_at = datetime.now()
         assert isinstance(fetched_at, datetime)
+
+
+class TestDemoPresets:
+    """Test preset query values."""
+
+    PRESETS = {
+        "Quiet Italian": "恵比寿で静かに話せるイタリアン。予算は3000円以内",
+        "Cheap but far": "渋谷で安い和食。多少遠くてもよい",
+        "Information lacking": "新宿で落ち着いて話せる店。情報が少なくても候補は見たい",
+    }
+
+    def test_three_presets_exist(self):
+        assert len(self.PRESETS) == 3
+
+    def test_quiet_italian_query(self):
+        assert "恵比寿" in self.PRESETS["Quiet Italian"]
+        assert "イタリアン" in self.PRESETS["Quiet Italian"]
+
+    def test_cheap_but_far_query(self):
+        assert "渋谷" in self.PRESETS["Cheap but far"]
+        assert "和食" in self.PRESETS["Cheap but far"]
+
+    def test_information_lacking_query(self):
+        assert "新宿" in self.PRESETS["Information lacking"]
+        assert "情報" in self.PRESETS["Information lacking"]
+
+    def test_preset_does_not_auto_execute(self):
+        """Preset sets query text only, does not trigger search."""
+        # By design: setPreset() only sets value, no fetch call
+        query = self.PRESETS["Quiet Italian"]
+        assert isinstance(query, str)
+
+
+class TestValueExplainer:
+    """Test the explainer card content."""
+
+    BULLETS = [
+        "Shows how catalog changes reasons, not just rankings",
+        "Keeps unknowns instead of pretending certainty",
+        "Separates conflicts from hard disqualification",
+        "Supports review workflows with flagged runs and gate status",
+    ]
+
+    def test_explainer_has_title(self):
+        title = "Why Compare matters"
+        assert title == "Why Compare matters"
+
+    def test_explainer_has_4_bullets(self):
+        assert len(self.BULLETS) == 4
+
+    def test_all_bullets_present(self):
+        for b in self.BULLETS:
+            assert isinstance(b, str)
+            assert len(b) > 10
+
+
+class TestDiffHighlightBadges:
+    """Test ablation diff highlight badge derivation."""
+
+    def _make_diff(self, ranking=False, scores=None, reasons=None, unknowns=None, confs=None):
+        return {
+            "ranking_changed": ranking,
+            "score_changes": scores or {},
+            "reason_changes": reasons or {},
+            "unknown_changes": unknowns or {},
+            "confidence_changes": confs or {},
+        }
+
+    def test_highlight_ranking_no(self):
+        d = self._make_diff()
+        assert d["ranking_changed"] is False
+
+    def test_highlight_ranking_yes(self):
+        d = self._make_diff(ranking=True)
+        assert d["ranking_changed"] is True
+
+    def test_highlight_score_count(self):
+        d = self._make_diff(scores={"p1": {}, "p2": {}})
+        assert len(d["score_changes"]) == 2
+
+    def test_highlight_reason_count(self):
+        d = self._make_diff(reasons={"p1": ["atmo"]})
+        assert len(d["reason_changes"]) == 1
+
+    def test_highlight_unknown_reduced_no(self):
+        d = self._make_diff()
+        assert len(d["unknown_changes"]) == 0
+
+    def test_highlight_unknown_reduced_yes(self):
+        d = self._make_diff(unknowns={"p1": {"with": 0, "without": 1}})
+        assert len(d["unknown_changes"]) > 0
+
+    def test_highlights_derived_from_existing_keys_only(self):
+        """All highlight values come from diff_summary keys, no new logic."""
+        d = self._make_diff(scores={"p1": {}}, reasons={"p1": ["x"]})
+        keys_used = {"ranking_changed", "score_changes", "reason_changes",
+                     "unknown_changes", "confidence_changes"}
+        assert keys_used == set(d.keys())

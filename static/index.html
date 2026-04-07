@@ -170,6 +170,32 @@
   .diag-card summary { cursor: pointer; font-weight: 500; color: var(--text); font-size: 13px; }
   .diag-pre { margin-top: 8px; white-space: pre-wrap; word-break: break-all; }
 
+  /* Presets */
+  .preset-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .preset-btn {
+    padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px;
+    background: var(--card); font-size: 12px; cursor: pointer; color: var(--text);
+  }
+  .preset-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Explainer */
+  .explainer-card {
+    background: var(--accent-light); border: 1px solid #dbeafe; border-radius: var(--radius);
+    padding: 12px 16px; margin-bottom: 12px;
+  }
+  .explainer-card h3 { font-size: 13px; font-weight: 600; color: var(--accent); margin-bottom: 6px; }
+  .explainer-card ul { margin: 0; padding-left: 18px; font-size: 12px; color: var(--text); }
+  .explainer-card li { margin-bottom: 3px; }
+
+  /* Diff highlights */
+  .diff-highlights { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .diff-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;
+    background: var(--bg); border: 1px solid var(--border);
+  }
+  .diff-badge .badge-val { font-family: 'SF Mono', Monaco, monospace; }
+
   /* Summary panel */
   .summary-panel {
     background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
@@ -251,6 +277,23 @@
       <label><input type="checkbox" id="strictMode"> Strict</label>
       <label><input type="checkbox" id="googlePlaces"> Google Places</label>
     </div>
+  </div>
+
+  <div class="preset-bar">
+    <span style="font-size:12px;color:var(--muted);margin-right:4px">Presets:</span>
+    <button class="preset-btn" onclick="setPreset('恵比寿で静かに話せるイタリアン。予算は3000円以内')">Quiet Italian</button>
+    <button class="preset-btn" onclick="setPreset('渋谷で安い和食。多少遠くてもよい')">Cheap but far</button>
+    <button class="preset-btn" onclick="setPreset('新宿で落ち着いて話せる店。情報が少なくても候補は見たい')">Information lacking</button>
+  </div>
+
+  <div class="explainer-card">
+    <h3>Why Compare matters</h3>
+    <ul>
+      <li>Shows how catalog changes reasons, not just rankings</li>
+      <li>Keeps unknowns instead of pretending certainty</li>
+      <li>Separates conflicts from hard disqualification</li>
+      <li>Supports review workflows with flagged runs and gate status</li>
+    </ul>
   </div>
 
   <div style="margin-bottom:12px"><button class="load-summary-btn" onclick="loadSummary()">Load Ablation Summary</button></div>
@@ -430,8 +473,21 @@ async function runAblation() {
 
     status.textContent = `Ablation comparison done in ${elapsed}s`;
 
-    // Diff summary card
+    // Diff highlight badges
     const d = data.diff_summary;
+    const scoreN = Object.keys(d.score_changes || {}).length;
+    const reasonN = Object.keys(d.reason_changes || {}).length;
+    const confN = Object.keys(d.confidence_changes || {}).length;
+    const unkReduced = Object.keys(d.unknown_changes || {}).length > 0;
+    diagDiv.innerHTML = `<div class="diff-highlights">
+      <span class="diff-badge">ranking changed: <span class="badge-val">${d.ranking_changed ? 'yes' : 'no'}</span></span>
+      <span class="diff-badge">score changes: <span class="badge-val">${scoreN}</span></span>
+      <span class="diff-badge">reason changes: <span class="badge-val">${reasonN}</span></span>
+      <span class="diff-badge">unknown reduced: <span class="badge-val">${unkReduced ? 'yes' : 'no'}</span></span>
+      <span class="diff-badge">confidence changes: <span class="badge-val">${confN}</span></span>
+    </div>`;
+
+    // Diff summary card
     let diffHtml = `<div class="diff-card"><h3>Diff Summary</h3>`;
     diffHtml += `<div class="diff-row"><span class="diff-label">Ranking changed</span><span class="diff-val">${d.ranking_changed ? 'YES' : 'No'}</span></div>`;
 
@@ -600,6 +656,10 @@ function renderSummaryPanel() {
       <div class="summary-row"><span class="summary-label">Flagged list</span>${flaggedListHtml}</div>
     </div>
   </div>`;
+}
+
+function setPreset(query) {
+  document.getElementById('query').value = query;
 }
 
 document.getElementById('query').addEventListener('keydown', e => {
