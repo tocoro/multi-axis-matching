@@ -398,7 +398,8 @@ def main():
     logger.info("Starting server in %s mode on %s:%d", mode, args.host, args.port)
 
     import uvicorn
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    uvicorn.run("server:app", host=args.host, port=args.port,
+                log_level="info", reload=True)
 
 
 if __name__ == "__main__":
