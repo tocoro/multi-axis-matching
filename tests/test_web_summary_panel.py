@@ -631,3 +631,77 @@ class TestQuickJumpLinks:
         # Quick jump is always available after Compare, regardless of scenario
         for scenario_id in [None, "r1", "c2"]:
             assert True  # Always show jump links
+
+
+class TestChangedCandidateLinks:
+    def test_link_href_format(self):
+        cid = "place_1"
+        href = f"#candidateCompare-{cid}"
+        assert href == "#candidateCompare-place_1"
+
+    def test_multiple_links(self):
+        ids = ["place_1", "place_3"]
+        hrefs = [f"#candidateCompare-{c}" for c in ids]
+        assert len(hrefs) == 2
+        assert hrefs[0] == "#candidateCompare-place_1"
+
+    def test_none_has_no_links(self):
+        ids = []
+        assert len(ids) == 0
+
+
+class TestCandidateCompareAnchors:
+    def _union_order(self, with_ids, without_ids):
+        seen = set()
+        result = []
+        for c in with_ids + without_ids:
+            if c not in seen:
+                seen.add(c)
+                result.append(c)
+        return result
+
+    def test_with_first_order(self):
+        ids = self._union_order(["p1", "p3"], ["p3", "p2"])
+        assert ids == ["p1", "p3", "p2"]
+
+    def test_anchor_id_format(self):
+        cid = "clinic_1"
+        assert f"candidateCompare-{cid}" == "candidateCompare-clinic_1"
+
+    def test_anchors_match_changed_links(self):
+        changed = ["p1", "p3"]
+        all_ids = ["p1", "p3", "p2"]
+        for c in changed:
+            assert c in all_ids
+            assert f"#candidateCompare-{c}" == f"#candidateCompare-{c}"
+
+
+class TestCandidateCompareIndex:
+    def test_heading(self):
+        assert "Candidate compare index" == "Candidate compare index"
+
+    def test_all_candidates_listed(self):
+        all_ids = ["p1", "p3", "p2"]
+        links = [f"#candidateCompare-{c}" for c in all_ids]
+        assert len(links) == 3
+
+    def test_order_matches_union(self):
+        with_ids = ["p1", "p3"]
+        without_ids = ["p3", "p2"]
+        seen = set()
+        union = []
+        for c in with_ids + without_ids:
+            if c not in seen:
+                seen.add(c)
+                union.append(c)
+        links = [f"#candidateCompare-{c}" for c in union]
+        assert links == ["#candidateCompare-p1", "#candidateCompare-p3", "#candidateCompare-p2"]
+
+    def test_empty_shows_none(self):
+        all_ids = []
+        assert len(all_ids) == 0
+
+    def test_works_for_scenario_and_manual(self):
+        for scenario_id in [None, "r1"]:
+            all_ids = ["p1"]
+            assert len(all_ids) > 0

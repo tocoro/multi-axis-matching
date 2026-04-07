@@ -600,7 +600,7 @@ async function runAblation() {
     }
     let changedHtml = `<div class="diff-card"><h3>Changed candidates</h3>`;
     if (changedIds.length) {
-      changedHtml += changedIds.map(c => `<div class="diff-row"><span class="diff-val">- ${c}</span></div>`).join('');
+      changedHtml += changedIds.map(c => `<div class="diff-row"><a href="#candidateCompare-${c}" style="color:var(--accent)">- ${c}</a></div>`).join('');
     } else {
       changedHtml += `<div class="diff-row"><span class="diff-val" style="color:var(--muted)">none</span></div>`;
     }
@@ -612,21 +612,49 @@ async function runAblation() {
     jumpHtml += `<div class="diff-row"><a href="#withoutCatalogResults" style="color:var(--accent)">Go to without-catalog results</a></div>`;
     jumpHtml += `</div>`;
 
-    diagDiv.innerHTML += summaryStrip + changedHtml + jumpHtml + diffHtml;
-
-    // Side by side results
+    // Full candidate union: with-first, then without-only
     const withRanking = data.with_catalog?.ranking || [];
     const withoutRanking = data.without_catalog?.ranking || [];
+    const allCandidateIds = [];
+    const allSeen = new Set();
+    for (const e of withRanking) { if (!allSeen.has(e.candidate_id)) { allSeen.add(e.candidate_id); allCandidateIds.push(e.candidate_id); } }
+    for (const e of withoutRanking) { if (!allSeen.has(e.candidate_id)) { allSeen.add(e.candidate_id); allCandidateIds.push(e.candidate_id); } }
+
+    // Candidate compare index
+    let indexHtml = `<div class="diff-card"><h3>Candidate compare index</h3>`;
+    if (allCandidateIds.length) {
+      indexHtml += allCandidateIds.map(c => `<div class="diff-row"><a href="#candidateCompare-${c}" style="color:var(--accent)">${c}</a></div>`).join('');
+    } else {
+      indexHtml += `<div class="diff-row"><span class="diff-val" style="color:var(--muted)">none</span></div>`;
+    }
+    indexHtml += `</div>`;
+
+    diagDiv.innerHTML += summaryStrip + changedHtml + jumpHtml + indexHtml + diffHtml;
+
+    // Side by side results with candidate anchors
     const withSources = data.with_catalog?.candidate_sources || {};
     const withoutSources = data.without_catalog?.candidate_sources || {};
 
-    let leftHtml = withRanking.map(e => renderResult(e, withSources[e.candidate_id])).join('');
-    let rightHtml = withoutRanking.map(e => renderResult(e, withoutSources[e.candidate_id])).join('');
+    let pairHtml = '';
+    for (const cid of allCandidateIds) {
+      const wEntry = withRanking.find(e => e.candidate_id === cid);
+      const woEntry = withoutRanking.find(e => e.candidate_id === cid);
+      const wCard = wEntry ? renderResult(wEntry, withSources[cid]) : '<div class="result-card" style="opacity:0.4"><div class="result-meta">Not in with-catalog results</div></div>';
+      const woCard = woEntry ? renderResult(woEntry, withoutSources[cid]) : '<div class="result-card" style="opacity:0.4"><div class="result-meta">Not in without-catalog results</div></div>';
+      pairHtml += `<div id="candidateCompare-${cid}" style="scroll-margin-top:80px">
+        <div class="ablation-wrapper">
+          <div class="ablation-col">${wCard}</div>
+          <div class="ablation-col">${woCard}</div>
+        </div>
+      </div>`;
+    }
 
-    resultsDiv.innerHTML = `<div class="ablation-wrapper">
-      <div class="ablation-col" id="withCatalogResults"><h3>With Catalog</h3>${leftHtml}</div>
-      <div class="ablation-col" id="withoutCatalogResults"><h3>Without Catalog</h3>${rightHtml}</div>
-    </div>`;
+    resultsDiv.innerHTML = `
+      <div class="ablation-wrapper" style="margin-bottom:12px">
+        <div class="ablation-col" id="withCatalogResults"><h3>With Catalog</h3></div>
+        <div class="ablation-col" id="withoutCatalogResults"><h3>Without Catalog</h3></div>
+      </div>
+      ${pairHtml}`;
 
   } catch (e) {
     status.className = 'status error';
