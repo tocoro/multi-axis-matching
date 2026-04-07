@@ -83,6 +83,7 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 16px 20px;
+    overflow: hidden;
     margin-bottom: 12px;
     position: relative;
   }
@@ -121,20 +122,21 @@
   .axis-item {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     font-size: 12px;
-    padding: 6px 8px;
+    padding: 5px 6px;
     background: var(--bg);
     border-radius: 4px;
+    overflow: hidden;
   }
-  .axis-name { font-weight: 500; min-width: 80px; }
-  .axis-bar { flex: 1; height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; }
+  .axis-name { font-weight: 500; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; max-width: 90px; }
+  .axis-bar { flex: 1; height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; min-width: 30px; }
   .axis-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
   .axis-bar-fill.supported { background: var(--green); }
   .axis-bar-fill.conflict { background: var(--orange); }
   .axis-bar-fill.unknown { background: #d1d5db; }
-  .axis-score { font-variant-numeric: tabular-nums; min-width: 28px; text-align: right; }
-  .axis-status { font-size: 11px; min-width: 60px; }
+  .axis-score { font-variant-numeric: tabular-nums; min-width: 28px; text-align: right; flex-shrink: 0; }
+  .axis-status { font-size: 11px; min-width: 52px; flex-shrink: 0; }
   .axis-status.supported { color: var(--green); }
   .axis-status.conflict { color: var(--orange); }
   .axis-status.unknown { color: var(--muted); }
@@ -189,7 +191,8 @@
 
   /* Ablation comparison */
   .ablation-wrapper { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .ablation-col { min-width: 0; }
+  .ablation-col { min-width: 0; overflow: hidden; }
+  .ablation-col .axis-grid { grid-template-columns: 1fr; }
   .ablation-col h3 { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
   .diff-card {
     background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
