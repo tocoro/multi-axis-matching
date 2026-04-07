@@ -540,13 +540,52 @@ async function runAblation() {
     // What to notice (scenario-driven only)
     const noticeHtml = getWhatToNoticeHtml();
 
-    // Diff highlight badges
+    // Add to history
     const d = data.diff_summary;
+    const changedCount = new Set([
+      ...Object.keys(d.score_changes || {}),
+      ...Object.keys(d.reason_changes || {}),
+      ...Object.keys(d.confidence_changes || {}),
+      ...Object.keys(d.unknown_changes || {}),
+    ]).size;
+    const scenarioObj = currentScenarioId ? SCENARIOS.find(x => x.id === currentScenarioId) : null;
+    compareHistory.unshift({
+      query,
+      scenarioLabel: scenarioObj ? scenarioObj.title : null,
+      domain: scenarioObj ? scenarioObj.domain : null,
+      rankingChanged: d.ranking_changed,
+      changedCandidateCount: changedCount,
+      timestampLabel: new Date().toLocaleTimeString(),
+    });
+    if (compareHistory.length > 5) compareHistory.length = 5;
+
+    // Compare history panel
+    let historyHtml = `<div class="diff-card"><h3>Recent compare history</h3>`;
+    if (compareHistory.length) {
+      historyHtml += compareHistory.map((h, i) => {
+        const domLabel = h.domain || 'manual';
+        const scenLabel = h.scenarioLabel ? ` | ${h.scenarioLabel}` : '';
+        const rankLabel = h.rankingChanged ? 'ranking changed' : 'ranking unchanged';
+        const q = h.query.replace(/'/g, "\\'");
+        return `<div class="diff-row" style="font-size:12px">
+          <span class="diff-val">- ${h.timestampLabel} | ${domLabel}${scenLabel} | ${rankLabel} | changed candidates: ${h.changedCandidateCount}</span>
+          <button class="load-summary-btn" onclick="restoreQuery('${q}')" style="margin-left:8px">Restore query</button>
+          <button class="load-summary-btn" onclick="rerunQuery('${q}')" style="margin-left:4px">Run again</button>
+        </div>`;
+      }).join('');
+    } else {
+      historyHtml += `<div class="diff-row"><span class="diff-val" style="color:var(--muted)">none</span></div>`;
+    }
+    historyHtml += `</div>`;
+
+    diagDiv.innerHTML = noticeHtml + historyHtml;
+
+    // Diff highlight badges
     const scoreN = Object.keys(d.score_changes || {}).length;
     const reasonN = Object.keys(d.reason_changes || {}).length;
     const confN = Object.keys(d.confidence_changes || {}).length;
     const unkReduced = Object.keys(d.unknown_changes || {}).length > 0;
-    diagDiv.innerHTML = noticeHtml + `<div class="diff-highlights">
+    diagDiv.innerHTML += `<div class="diff-highlights">
       <span class="diff-badge">ranking changed: <span class="badge-val">${d.ranking_changed ? 'yes' : 'no'}</span></span>
       <span class="diff-badge">score changes: <span class="badge-val">${scoreN}</span></span>
       <span class="diff-badge">reason changes: <span class="badge-val">${reasonN}</span></span>
@@ -797,6 +836,17 @@ function renderSummaryPanel() {
   </div>`;
 }
 
+function restoreQuery(query) {
+  document.getElementById('query').value = query;
+}
+
+function rerunQuery(query) {
+  document.getElementById('query').value = query;
+  currentScenarioId = null;
+  updateDemoContext();
+  runAblation();
+}
+
 function setPreset(query) {
   document.getElementById('query').value = query;
 }
@@ -805,6 +855,9 @@ function setPreset(query) {
 let showChangedCandidatesOnly = false;
 let currentCandidateFocus = null;
 let _lastAblationData = null;
+
+// Compare history (max 5, newest first)
+const compareHistory = [];
 
 function toggleChangedFilter() {
   showChangedCandidatesOnly = !showChangedCandidatesOnly;

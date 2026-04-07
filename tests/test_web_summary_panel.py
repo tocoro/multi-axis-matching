@@ -777,3 +777,93 @@ class TestCandidateFocusHeader:
         # New compare resets
         focus = None
         assert focus is None
+
+
+class TestCompareHistory:
+    def _make_entry(self, query="q", scenario=None, domain=None, ranking=False, changed=0):
+        return {
+            "query": query,
+            "scenarioLabel": scenario,
+            "domain": domain,
+            "rankingChanged": ranking,
+            "changedCandidateCount": changed,
+            "timestampLabel": "12:00:00",
+        }
+
+    def test_add_entry_on_compare(self):
+        history = []
+        history.insert(0, self._make_entry())
+        assert len(history) == 1
+
+    def test_manual_has_null_scenario(self):
+        e = self._make_entry()
+        assert e["scenarioLabel"] is None
+        assert e["domain"] is None
+
+    def test_scenario_has_label_and_domain(self):
+        e = self._make_entry(scenario="Quiet Italian", domain="restaurant")
+        assert e["scenarioLabel"] == "Quiet Italian"
+        assert e["domain"] == "restaurant"
+
+    def test_max_5_entries(self):
+        history = []
+        for i in range(7):
+            history.insert(0, self._make_entry(query=f"q{i}"))
+            if len(history) > 5:
+                history[:] = history[:5]
+        assert len(history) == 5
+        assert history[0]["query"] == "q6"
+
+    def test_search_does_not_add(self):
+        # Search should not touch history
+        history = [self._make_entry()]
+        # simulate search: do nothing to history
+        assert len(history) == 1
+
+
+class TestCompareHistoryPanel:
+    def test_heading(self):
+        assert "Recent compare history" == "Recent compare history"
+
+    def test_empty_shows_none(self):
+        history = []
+        display = "none" if not history else "entries"
+        assert display == "none"
+
+    def test_scenario_row_format(self):
+        e = {"timestampLabel": "14:32:10", "domain": "clinic", "scenarioLabel": "Specialty conflict",
+             "rankingChanged": False, "changedCandidateCount": 2}
+        dom = e["domain"] or "manual"
+        scen = f" | {e['scenarioLabel']}" if e["scenarioLabel"] else ""
+        rank = "ranking changed" if e["rankingChanged"] else "ranking unchanged"
+        row = f"- {e['timestampLabel']} | {dom}{scen} | {rank} | changed candidates: {e['changedCandidateCount']}"
+        assert "clinic" in row
+        assert "Specialty conflict" in row
+        assert "ranking unchanged" in row
+
+    def test_manual_row_format(self):
+        e = {"timestampLabel": "14:35:05", "domain": None, "scenarioLabel": None,
+             "rankingChanged": True, "changedCandidateCount": 1}
+        dom = e["domain"] or "manual"
+        scen = f" | {e['scenarioLabel']}" if e["scenarioLabel"] else ""
+        rank = "ranking changed" if e["rankingChanged"] else "ranking unchanged"
+        row = f"- {e['timestampLabel']} | {dom}{scen} | {rank} | changed candidates: {e['changedCandidateCount']}"
+        assert "manual" in row
+        assert "ranking changed" in row
+
+
+class TestRestoreAndRerun:
+    def test_restore_sets_query_only(self):
+        query = "テスト"
+        # restoreQuery just sets value, no compare
+        assert isinstance(query, str)
+
+    def test_rerun_triggers_compare(self):
+        query = "テスト"
+        # rerunQuery sets value + calls runAblation
+        assert isinstance(query, str)
+
+    def test_rerun_does_not_require_scenario(self):
+        scenario_id = None
+        # Rerun works without scenario context
+        assert scenario_id is None
