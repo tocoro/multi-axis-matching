@@ -580,7 +580,39 @@ async function runAblation() {
       diffHtml += `<div class="diff-row"><span class="diff-val" style="color:var(--muted)">No differences detected</span></div>`;
     }
     diffHtml += `</div>`;
-    diagDiv.innerHTML = diffHtml;
+
+    // Task A: Compare summary strip
+    let summaryStrip = `<div class="diff-card"><h3>Compare summary</h3>`;
+    summaryStrip += `<div class="diff-row"><span class="diff-label">ranking</span><span class="diff-val">${d.ranking_changed ? 'changed' : 'unchanged'}</span></div>`;
+    summaryStrip += `<div class="diff-row"><span class="diff-label">scores</span><span class="diff-val">${scoreN} changed</span></div>`;
+    summaryStrip += `<div class="diff-row"><span class="diff-label">reasons</span><span class="diff-val">${reasonN} changed</span></div>`;
+    summaryStrip += `<div class="diff-row"><span class="diff-label">confidence</span><span class="diff-val">${confN} changed</span></div>`;
+    summaryStrip += `<div class="diff-row"><span class="diff-label">unknown</span><span class="diff-val">${unkReduced ? 'reduced' : 'no reduction'}</span></div>`;
+    summaryStrip += `</div>`;
+
+    // Task B: Changed candidates list
+    const changedIds = [];
+    const changedSeen = new Set();
+    for (const src of [d.score_changes, d.reason_changes, d.confidence_changes, d.unknown_changes]) {
+      for (const cid of Object.keys(src || {})) {
+        if (!changedSeen.has(cid)) { changedSeen.add(cid); changedIds.push(cid); }
+      }
+    }
+    let changedHtml = `<div class="diff-card"><h3>Changed candidates</h3>`;
+    if (changedIds.length) {
+      changedHtml += changedIds.map(c => `<div class="diff-row"><span class="diff-val">- ${c}</span></div>`).join('');
+    } else {
+      changedHtml += `<div class="diff-row"><span class="diff-val" style="color:var(--muted)">none</span></div>`;
+    }
+    changedHtml += `</div>`;
+
+    // Task C: Quick jump links
+    let jumpHtml = `<div class="diff-card"><h3>Quick jump</h3>`;
+    jumpHtml += `<div class="diff-row"><a href="#withCatalogResults" style="color:var(--accent)">Go to with-catalog results</a></div>`;
+    jumpHtml += `<div class="diff-row"><a href="#withoutCatalogResults" style="color:var(--accent)">Go to without-catalog results</a></div>`;
+    jumpHtml += `</div>`;
+
+    diagDiv.innerHTML += summaryStrip + changedHtml + jumpHtml + diffHtml;
 
     // Side by side results
     const withRanking = data.with_catalog?.ranking || [];
@@ -592,8 +624,8 @@ async function runAblation() {
     let rightHtml = withoutRanking.map(e => renderResult(e, withoutSources[e.candidate_id])).join('');
 
     resultsDiv.innerHTML = `<div class="ablation-wrapper">
-      <div class="ablation-col"><h3>With Catalog</h3>${leftHtml}</div>
-      <div class="ablation-col"><h3>Without Catalog</h3>${rightHtml}</div>
+      <div class="ablation-col" id="withCatalogResults"><h3>With Catalog</h3>${leftHtml}</div>
+      <div class="ablation-col" id="withoutCatalogResults"><h3>Without Catalog</h3>${rightHtml}</div>
     </div>`;
 
   } catch (e) {

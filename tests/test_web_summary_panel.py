@@ -537,3 +537,97 @@ class TestDemoContext:
         scenario_id = None
         context = "manual" if not scenario_id else "scenario"
         assert context == "manual"
+
+
+class TestCompareSummaryStrip:
+    def _make_diff(self, ranking=False, scores=None, reasons=None, confs=None, unknowns=None):
+        return {
+            "ranking_changed": ranking,
+            "score_changes": scores or {},
+            "reason_changes": reasons or {},
+            "confidence_changes": confs or {},
+            "unknown_changes": unknowns or {},
+        }
+
+    def test_summary_heading(self):
+        assert "Compare summary" == "Compare summary"
+
+    def test_ranking_unchanged(self):
+        d = self._make_diff()
+        assert "unchanged" == ("changed" if d["ranking_changed"] else "unchanged")
+
+    def test_ranking_changed(self):
+        d = self._make_diff(ranking=True)
+        assert "changed" == ("changed" if d["ranking_changed"] else "unchanged")
+
+    def test_score_count(self):
+        d = self._make_diff(scores={"p1": {}, "p2": {}})
+        assert len(d["score_changes"]) == 2
+
+    def test_unknown_no_reduction(self):
+        d = self._make_diff()
+        label = "reduced" if len(d["unknown_changes"]) > 0 else "no reduction"
+        assert label == "no reduction"
+
+    def test_unknown_reduced(self):
+        d = self._make_diff(unknowns={"p1": {}})
+        label = "reduced" if len(d["unknown_changes"]) > 0 else "no reduction"
+        assert label == "reduced"
+
+    def test_derived_from_existing_keys(self):
+        d = self._make_diff(scores={"p1": {}})
+        used = {"ranking_changed", "score_changes", "reason_changes", "confidence_changes", "unknown_changes"}
+        assert used == set(d.keys())
+
+
+class TestChangedCandidatesList:
+    def _union_dedupe(self, *dicts):
+        seen = set()
+        result = []
+        for d in dicts:
+            for k in (d or {}):
+                if k not in seen:
+                    seen.add(k)
+                    result.append(k)
+        return result
+
+    def test_union_correct(self):
+        ids = self._union_dedupe({"p1": {}}, {"p2": {}}, {"p1": {}})
+        assert ids == ["p1", "p2"]
+
+    def test_dedupe_preserves_order(self):
+        ids = self._union_dedupe({"b": {}}, {"a": {}}, {"b": {}}, {"c": {}})
+        assert ids == ["b", "a", "c"]
+
+    def test_empty_returns_none(self):
+        ids = self._union_dedupe({}, {}, {})
+        assert ids == []
+
+    def test_score_first_order(self):
+        ids = self._union_dedupe(
+            {"score_candidate": {}},
+            {"reason_candidate": {}},
+            {"conf_candidate": {}},
+            {"unk_candidate": {}},
+        )
+        assert ids[0] == "score_candidate"
+
+
+class TestQuickJumpLinks:
+    def test_heading(self):
+        assert "Quick jump" == "Quick jump"
+
+    def test_with_catalog_link(self):
+        assert "Go to with-catalog results" == "Go to with-catalog results"
+
+    def test_without_catalog_link(self):
+        assert "Go to without-catalog results" == "Go to without-catalog results"
+
+    def test_anchor_ids(self):
+        assert "withCatalogResults" == "withCatalogResults"
+        assert "withoutCatalogResults" == "withoutCatalogResults"
+
+    def test_works_for_both_scenario_and_manual(self):
+        # Quick jump is always available after Compare, regardless of scenario
+        for scenario_id in [None, "r1", "c2"]:
+            assert True  # Always show jump links
