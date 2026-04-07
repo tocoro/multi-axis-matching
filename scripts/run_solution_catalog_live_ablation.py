@@ -181,6 +181,17 @@ def build_artifact_directory_summary(index_items: list[dict]) -> dict:
     # Review digest (fixed phrases only)
     digest = _build_review_digest(verdict_counts, anomaly)
 
+    flagged = [r for r in comparison_rows if r.get("manual_review")]
+
+    # Focus rows
+    focus_rows = _build_focus_rows(flagged, latest, comparison_rows)
+    # Recommended artifact paths (deduplicated, order-preserving)
+    seen_paths: list[str] = []
+    for fr in focus_rows:
+        p = fr.get("artifact_path", "")
+        if p and p not in seen_paths:
+            seen_paths.append(p)
+
     return {
         "total_runs": len(index_items),
         "models": models,
@@ -196,9 +207,26 @@ def build_artifact_directory_summary(index_items: list[dict]) -> dict:
         "latest_artifact": latest,
         "comparison_rows": comparison_rows,
         "comparison_stats": _build_comparison_stats(comparison_rows),
-        "flagged_rows": [r for r in comparison_rows if r.get("manual_review")],
+        "flagged_rows": flagged,
+        "focus_rows": focus_rows,
+        "recommended_artifact_paths": seen_paths,
         "review_digest": digest,
     }
+
+
+def _build_focus_rows(
+    flagged: list[dict],
+    latest: dict | None,
+    comparison_rows: list[dict],
+) -> list[dict]:
+    if flagged:
+        return [{**r, "focus_reason": "flagged"} for r in flagged]
+    if latest:
+        lp = latest.get("artifact_path", "")
+        for r in comparison_rows:
+            if r.get("artifact_path") == lp:
+                return [{**r, "focus_reason": "latest"}]
+    return []
 
 
 def _build_comparison_stats(rows: list[dict]) -> dict:
@@ -295,6 +323,16 @@ def format_directory_summary_text(summary: dict) -> str:
             lines.append(f"- {f.get('timestamp', '')} | {f.get('model', '')} | {f.get('artifact_path', '')}")
     else:
         lines.append("Flagged rows: none")
+    lines.append("")
+
+    # Recommended artifacts
+    rec = summary.get("recommended_artifact_paths", [])
+    if rec:
+        lines.append("Recommended artifacts:")
+        for p in rec:
+            lines.append(f"- {p}")
+    else:
+        lines.append("Recommended artifacts: none")
     lines.append("")
 
     artifacts = summary.get("artifacts", [])

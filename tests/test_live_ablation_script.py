@@ -612,3 +612,112 @@ class TestFlaggedRowsText:
         s = build_artifact_directory_summary(items)
         text = format_directory_summary_text(s)
         assert "/flagged" in text
+
+
+# Helper for items with/without flagged
+def _items_with_flag():
+    return [
+        {"timestamp": "t1", "model": "m", "artifact_path": "/a",
+         "quick_verdict": {"reason_changed": True, "score_changed": True,
+                           "confidence_changed": False, "ranking_changed": False,
+                           "unknown_reduced": False, "disqualified_changed": False}},
+        {"timestamp": "t2", "model": "m", "artifact_path": "/b",
+         "quick_verdict": {"reason_changed": False, "score_changed": False,
+                           "confidence_changed": True, "ranking_changed": False,
+                           "unknown_reduced": False, "disqualified_changed": False}},
+    ]
+
+
+def _items_no_flag():
+    return [
+        {"timestamp": "t1", "model": "m", "artifact_path": "/a",
+         "quick_verdict": {"reason_changed": True, "score_changed": True,
+                           "confidence_changed": False, "ranking_changed": False,
+                           "unknown_reduced": False, "disqualified_changed": False}},
+        {"timestamp": "t2", "model": "m", "artifact_path": "/c",
+         "quick_verdict": {"reason_changed": True, "score_changed": True,
+                           "confidence_changed": False, "ranking_changed": False,
+                           "unknown_reduced": False, "disqualified_changed": False}},
+    ]
+
+
+class TestFocusRows:
+    def test_directory_summary_has_focus_rows(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        s = build_artifact_directory_summary(_items_with_flag())
+        assert "focus_rows" in s
+
+    def test_focus_rows_use_flagged_when_present(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        s = build_artifact_directory_summary(_items_with_flag())
+        assert len(s["focus_rows"]) > 0
+        for fr in s["focus_rows"]:
+            assert fr["focus_reason"] == "flagged"
+
+    def test_focus_rows_fall_back_to_latest(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        s = build_artifact_directory_summary(_items_no_flag())
+        assert len(s["focus_rows"]) == 1
+        assert s["focus_rows"][0]["focus_reason"] == "latest"
+        assert s["focus_rows"][0]["artifact_path"] == s["latest_artifact"]["artifact_path"]
+
+    def test_focus_rows_empty_when_no_rows(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        s = build_artifact_directory_summary([])
+        assert s["focus_rows"] == []
+
+
+class TestRecommendedArtifactPaths:
+    def test_directory_summary_has_recommended_paths(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        s = build_artifact_directory_summary(_items_with_flag())
+        assert "recommended_artifact_paths" in s
+
+    def test_recommended_paths_follow_focus_order(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        s = build_artifact_directory_summary(_items_with_flag())
+        focus_paths = [fr["artifact_path"] for fr in s["focus_rows"]]
+        assert s["recommended_artifact_paths"] == focus_paths
+
+    def test_recommended_paths_deduplicate(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        # Both flagged with same path (edge case)
+        items = [
+            {"timestamp": "t1", "model": "m", "artifact_path": "/dup",
+             "quick_verdict": {"reason_changed": False, "score_changed": False,
+                               "confidence_changed": True, "ranking_changed": False,
+                               "unknown_reduced": False, "disqualified_changed": False}},
+            {"timestamp": "t2", "model": "m", "artifact_path": "/dup",
+             "quick_verdict": {"reason_changed": False, "score_changed": False,
+                               "confidence_changed": True, "ranking_changed": False,
+                               "unknown_reduced": False, "disqualified_changed": False}},
+        ]
+        s = build_artifact_directory_summary(items)
+        assert s["recommended_artifact_paths"] == ["/dup"]
+
+
+class TestRecommendedArtifactsText:
+    def test_format_includes_recommended_artifacts_header(self):
+        from scripts.run_solution_catalog_live_ablation import (
+            build_artifact_directory_summary, format_directory_summary_text,
+        )
+        s = build_artifact_directory_summary(_items_with_flag())
+        text = format_directory_summary_text(s)
+        assert "Recommended artifacts:" in text
+
+    def test_format_recommended_none_when_empty(self):
+        from scripts.run_solution_catalog_live_ablation import (
+            build_artifact_directory_summary, format_directory_summary_text,
+        )
+        s = build_artifact_directory_summary([])
+        text = format_directory_summary_text(s)
+        assert "Recommended artifacts: none" in text
+
+    def test_format_lists_recommended_artifacts(self):
+        from scripts.run_solution_catalog_live_ablation import (
+            build_artifact_directory_summary, format_directory_summary_text,
+        )
+        s = build_artifact_directory_summary(_items_no_flag())
+        text = format_directory_summary_text(s)
+        # latest artifact path should be listed
+        assert s["latest_artifact"]["artifact_path"] in text
