@@ -176,6 +176,16 @@ def build_artifact_directory_summary(index_items: list[dict]) -> dict:
             "manual_review": rc or ur or dc or (cc and not rsc),
         })
 
+    # Row status
+    latest_path = latest["artifact_path"] if latest else None
+    for row in comparison_rows:
+        if row.get("manual_review"):
+            row["row_status"] = "review"
+        elif row.get("artifact_path") == latest_path:
+            row["row_status"] = "latest_focus"
+        else:
+            row["row_status"] = "stable"
+
     anomaly = _build_anomaly_flags(verdict_counts)
 
     # Review digest (fixed phrases only)
@@ -211,6 +221,30 @@ def build_artifact_directory_summary(index_items: list[dict]) -> dict:
         "focus_rows": focus_rows,
         "recommended_artifact_paths": seen_paths,
         "review_digest": digest,
+        "gate_summary": _build_gate_summary(len(index_items), flagged, seen_paths),
+    }
+
+
+def _build_gate_summary(total_runs: int, flagged: list, recommended_paths: list) -> dict:
+    if total_runs == 0:
+        return {
+            "gate_status": "empty",
+            "manual_review_required": False,
+            "flagged_run_count": 0,
+            "recommended_run_count": 0,
+        }
+    if flagged:
+        return {
+            "gate_status": "review_required",
+            "manual_review_required": True,
+            "flagged_run_count": len(flagged),
+            "recommended_run_count": len(recommended_paths),
+        }
+    return {
+        "gate_status": "pass",
+        "manual_review_required": False,
+        "flagged_run_count": 0,
+        "recommended_run_count": len(recommended_paths),
     }
 
 
@@ -292,6 +326,18 @@ def format_directory_summary_text(summary: dict) -> str:
     """Directory summary を人間向けテキストに整形する。"""
     lines = ["=== Live Ablation Directory Summary ==="]
     lines.append(f"Total runs: {summary.get('total_runs', 0)}")
+
+    # Gate summary
+    gs = summary.get("gate_summary", {})
+    lines.append("")
+    lines.append("Gate summary:")
+    lines.append(f"- gate_status: {gs.get('gate_status', 'unknown')}")
+    yn = lambda b: "yes" if b else "no"
+    lines.append(f"- manual_review_required: {yn(gs.get('manual_review_required'))}")
+    lines.append(f"- flagged_run_count: {gs.get('flagged_run_count', 0)}")
+    lines.append(f"- recommended_run_count: {gs.get('recommended_run_count', 0)}")
+
+    lines.append("")
     lines.append(f"Models: {', '.join(summary.get('models', []))}")
     lines.append(f"Queries: {len(summary.get('queries', []))}")
     lines.append("")

@@ -721,3 +721,88 @@ class TestRecommendedArtifactsText:
         text = format_directory_summary_text(s)
         # latest artifact path should be listed
         assert s["latest_artifact"]["artifact_path"] in text
+
+
+class TestRowStatus:
+    def test_comparison_rows_have_row_status(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        s = build_artifact_directory_summary(_items_with_flag())
+        for r in s["comparison_rows"]:
+            assert "row_status" in r
+            assert r["row_status"] in ("review", "latest_focus", "stable")
+
+    def test_row_status_review_for_manual_review_rows(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        s = build_artifact_directory_summary(_items_with_flag())
+        for r in s["comparison_rows"]:
+            if r["manual_review"]:
+                assert r["row_status"] == "review"
+
+    def test_row_status_latest_focus_for_latest_non_flagged(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        s = build_artifact_directory_summary(_items_no_flag())
+        latest_path = s["latest_artifact"]["artifact_path"]
+        for r in s["comparison_rows"]:
+            if r["artifact_path"] == latest_path and not r["manual_review"]:
+                assert r["row_status"] == "latest_focus"
+
+    def test_row_status_stable_for_other_rows(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        s = build_artifact_directory_summary(_items_no_flag())
+        latest_path = s["latest_artifact"]["artifact_path"]
+        for r in s["comparison_rows"]:
+            if r["artifact_path"] != latest_path and not r["manual_review"]:
+                assert r["row_status"] == "stable"
+
+
+class TestGateSummary:
+    def test_directory_summary_has_gate_summary(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        s = build_artifact_directory_summary(_items_with_flag())
+        assert "gate_summary" in s
+
+    def test_gate_review_required_when_flagged(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        s = build_artifact_directory_summary(_items_with_flag())
+        gs = s["gate_summary"]
+        assert gs["gate_status"] == "review_required"
+        assert gs["manual_review_required"] is True
+        assert gs["flagged_run_count"] > 0
+
+    def test_gate_pass_when_no_flagged(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        s = build_artifact_directory_summary(_items_no_flag())
+        gs = s["gate_summary"]
+        assert gs["gate_status"] == "pass"
+        assert gs["manual_review_required"] is False
+
+    def test_gate_empty_when_no_runs(self):
+        from scripts.run_solution_catalog_live_ablation import build_artifact_directory_summary
+        s = build_artifact_directory_summary([])
+        assert s["gate_summary"]["gate_status"] == "empty"
+
+
+class TestGateSummaryText:
+    def test_format_includes_gate_summary_header(self):
+        from scripts.run_solution_catalog_live_ablation import (
+            build_artifact_directory_summary, format_directory_summary_text,
+        )
+        s = build_artifact_directory_summary(_items_with_flag())
+        text = format_directory_summary_text(s)
+        assert "Gate summary:" in text
+
+    def test_format_shows_gate_status(self):
+        from scripts.run_solution_catalog_live_ablation import (
+            build_artifact_directory_summary, format_directory_summary_text,
+        )
+        s = build_artifact_directory_summary(_items_no_flag())
+        text = format_directory_summary_text(s)
+        assert "gate_status: pass" in text
+
+    def test_format_shows_manual_review_yes_no(self):
+        from scripts.run_solution_catalog_live_ablation import (
+            build_artifact_directory_summary, format_directory_summary_text,
+        )
+        s = build_artifact_directory_summary(_items_with_flag())
+        text = format_directory_summary_text(s)
+        assert "manual_review_required: yes" in text
