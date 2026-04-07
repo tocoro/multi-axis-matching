@@ -170,6 +170,16 @@
   .diag-card summary { cursor: pointer; font-weight: 500; color: var(--text); font-size: 13px; }
   .diag-pre { margin-top: 8px; white-space: pre-wrap; word-break: break-all; }
 
+  /* Domain filter tabs */
+  .domain-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+  .domain-tab {
+    padding: 4px 12px; border: 1px solid var(--border); border-radius: 4px;
+    font-size: 12px; cursor: pointer; background: var(--card); color: var(--muted);
+  }
+  .domain-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .scenario-counts { font-size: 11px; color: var(--muted); margin-bottom: 8px; font-family: 'SF Mono', Monaco, monospace; }
+  .demo-context { font-size: 12px; color: var(--muted); margin-bottom: 8px; padding: 4px 8px; background: var(--bg); border-radius: 4px; display: inline-block; }
+
   /* Scenario cards */
   .scenario-section h2 { font-size: 15px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
   .scenario-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
@@ -289,7 +299,7 @@
       <input id="query" type="text" placeholder="恵比寿で静かに話せるイタリアン。予算は3000円以内"
              value="恵比寿で静かに話せるイタリアン。予算は3000円以内">
       <button class="btn" id="searchBtn" onclick="runSearch()">Search</button>
-      <button class="btn" id="compareBtn" onclick="currentScenarioId=null;runAblation()" style="background:var(--muted)">Compare</button>
+      <button class="btn" id="compareBtn" onclick="currentScenarioId=null;updateDemoContext();runAblation()" style="background:var(--muted)">Compare</button>
     </div>
     <div class="options">
       <label><input type="checkbox" id="liveMode" onchange="toggleModel()"> Live (real LLM)</label>
@@ -305,6 +315,8 @@
       <label><input type="checkbox" id="googlePlaces"> Google Places</label>
     </div>
   </div>
+
+  <div class="demo-context" id="demoContext">Demo context: manual</div>
 
   <div class="explainer-card" style="background:#f0fdf4;border-color:#bbf7d0">
     <h3 style="color:var(--green)">Start with Compare</h3>
@@ -327,6 +339,12 @@
 
   <div class="scenario-section">
     <h2>Demo scenarios</h2>
+    <div class="domain-tabs">
+      <button class="domain-tab active" onclick="setDomainFilter('all')">All</button>
+      <button class="domain-tab" onclick="setDomainFilter('restaurant')">Restaurant</button>
+      <button class="domain-tab" onclick="setDomainFilter('clinic')">Clinic</button>
+    </div>
+    <div class="scenario-counts" id="scenarioCounts"></div>
     <div class="scenario-grid" id="scenarioGrid"></div>
   </div>
 
@@ -709,6 +727,30 @@ function setPreset(query) {
   document.getElementById('query').value = query;
 }
 
+// Domain filter state
+let currentScenarioDomainFilter = 'all';
+
+function setDomainFilter(filter) {
+  currentScenarioDomainFilter = filter;
+  // Update tab active state
+  document.querySelectorAll('.domain-tab').forEach(t => {
+    t.classList.toggle('active', t.textContent.toLowerCase() === filter);
+  });
+  renderScenarioCards();
+}
+
+function updateDemoContext() {
+  const el = document.getElementById('demoContext');
+  if (!currentScenarioId) {
+    el.textContent = 'Demo context: manual';
+    return;
+  }
+  const s = SCENARIOS.find(x => x.id === currentScenarioId);
+  if (s) {
+    el.textContent = `Demo context: ${s.domain} / ${s.title}`;
+  }
+}
+
 // Scenario data
 const SCENARIOS = [
   {id:'r1', domain:'restaurant', title:'Quiet Italian', query:'恵比寿で静かに話せるイタリアン。予算は3000円以内', bullets:['catalog can change reasons without forcing rank changes','good fit can be explained across multiple axes']},
@@ -723,7 +765,14 @@ let currentScenarioId = null;
 
 function renderScenarioCards() {
   const grid = document.getElementById('scenarioGrid');
-  grid.innerHTML = SCENARIOS.map(s => `
+  const filtered = currentScenarioDomainFilter === 'all'
+    ? SCENARIOS
+    : SCENARIOS.filter(s => s.domain === currentScenarioDomainFilter);
+  const rCount = filtered.filter(s => s.domain === 'restaurant').length;
+  const cCount = filtered.filter(s => s.domain === 'clinic').length;
+  document.getElementById('scenarioCounts').textContent =
+    `Visible scenarios: ${filtered.length} | Restaurant: ${rCount} | Clinic: ${cCount}`;
+  grid.innerHTML = filtered.map(s => `
     <div class="scenario-card">
       <div class="scenario-domain">${s.domain}</div>
       <div class="scenario-title">${s.title}</div>
@@ -742,6 +791,7 @@ function compareScenario(scenarioId) {
   if (!s) return;
   currentScenarioId = scenarioId;
   document.getElementById('query').value = s.query;
+  updateDemoContext();
   runAblation();
 }
 

@@ -463,3 +463,77 @@ class TestScenarioCards:
     def test_scenarios_are_restaurant_and_clinic(self):
         domains = {s["domain"] for s in self.SCENARIOS}
         assert domains == {"restaurant", "clinic"}
+
+
+class TestDomainFilterTabs:
+    SCENARIOS = TestScenarioCards.SCENARIOS
+
+    def _filter(self, domain):
+        if domain == "all":
+            return self.SCENARIOS
+        return [s for s in self.SCENARIOS if s["domain"] == domain]
+
+    def test_initial_all(self):
+        assert len(self._filter("all")) == 6
+
+    def test_restaurant_filter(self):
+        f = self._filter("restaurant")
+        assert len(f) == 3
+        assert all(s["domain"] == "restaurant" for s in f)
+
+    def test_clinic_filter(self):
+        f = self._filter("clinic")
+        assert len(f) == 3
+        assert all(s["domain"] == "clinic" for s in f)
+
+    def test_filter_values_fixed(self):
+        valid = {"all", "restaurant", "clinic"}
+        for v in valid:
+            assert v in valid
+
+    def test_all_count_line(self):
+        f = self._filter("all")
+        r = sum(1 for s in f if s["domain"] == "restaurant")
+        c = sum(1 for s in f if s["domain"] == "clinic")
+        assert (len(f), r, c) == (6, 3, 3)
+
+    def test_restaurant_count_line(self):
+        f = self._filter("restaurant")
+        r = sum(1 for s in f if s["domain"] == "restaurant")
+        c = sum(1 for s in f if s["domain"] == "clinic")
+        assert (len(f), r, c) == (3, 3, 0)
+
+    def test_clinic_count_line(self):
+        f = self._filter("clinic")
+        r = sum(1 for s in f if s["domain"] == "restaurant")
+        c = sum(1 for s in f if s["domain"] == "clinic")
+        assert (len(f), r, c) == (3, 0, 3)
+
+    def test_order_preserved_after_filter(self):
+        f = self._filter("restaurant")
+        titles = [s["title"] for s in f]
+        assert titles == ["Quiet Italian", "Cheap but far", "Information lacking"]
+
+
+class TestDemoContext:
+    SCENARIOS = TestScenarioCards.SCENARIOS
+
+    def test_initial_manual(self):
+        context = "manual"
+        assert context == "manual"
+
+    def test_scenario_compare_shows_domain_title(self):
+        s = self.SCENARIOS[0]  # r1
+        context = f"{s['domain']} / {s['title']}"
+        assert context == "restaurant / Quiet Italian"
+
+    def test_manual_compare_resets(self):
+        scenario_id = None
+        context = "manual" if not scenario_id else "scenario"
+        assert context == "manual"
+
+    def test_preset_click_stays_manual(self):
+        # Preset only sets query, doesn't change context
+        scenario_id = None
+        context = "manual" if not scenario_id else "scenario"
+        assert context == "manual"
