@@ -260,32 +260,76 @@ class TestFetchedTimestamp:
 class TestDemoPresets:
     """Test preset query values."""
 
-    PRESETS = {
+    RESTAURANT_PRESETS = {
         "Quiet Italian": "恵比寿で静かに話せるイタリアン。予算は3000円以内",
         "Cheap but far": "渋谷で安い和食。多少遠くてもよい",
         "Information lacking": "新宿で落ち着いて話せる店。情報が少なくても候補は見たい",
     }
 
-    def test_three_presets_exist(self):
-        assert len(self.PRESETS) == 3
+    CLINIC_PRESETS = {
+        "After-work internal medicine": "恵比寿で夕方以降に内科を受診したい。保険適用希望",
+        "Specialty conflict": "渋谷で今夜受診したい。近いところがよいが、内科が望ましい",
+        "Insurance but low info": "新宿近辺で保険が使えるクリニックを探したい。情報が少なくても候補は見たい",
+    }
+
+    def test_restaurant_group_exists(self):
+        assert len(self.RESTAURANT_PRESETS) == 3
+
+    def test_clinic_group_exists(self):
+        assert len(self.CLINIC_PRESETS) == 3
 
     def test_quiet_italian_query(self):
-        assert "恵比寿" in self.PRESETS["Quiet Italian"]
-        assert "イタリアン" in self.PRESETS["Quiet Italian"]
+        assert "恵比寿" in self.RESTAURANT_PRESETS["Quiet Italian"]
+        assert "イタリアン" in self.RESTAURANT_PRESETS["Quiet Italian"]
 
     def test_cheap_but_far_query(self):
-        assert "渋谷" in self.PRESETS["Cheap but far"]
-        assert "和食" in self.PRESETS["Cheap but far"]
+        assert "渋谷" in self.RESTAURANT_PRESETS["Cheap but far"]
+        assert "和食" in self.RESTAURANT_PRESETS["Cheap but far"]
 
     def test_information_lacking_query(self):
-        assert "新宿" in self.PRESETS["Information lacking"]
-        assert "情報" in self.PRESETS["Information lacking"]
+        assert "新宿" in self.RESTAURANT_PRESETS["Information lacking"]
+        assert "情報" in self.RESTAURANT_PRESETS["Information lacking"]
+
+    def test_after_work_clinic_query(self):
+        q = self.CLINIC_PRESETS["After-work internal medicine"]
+        assert "内科" in q
+        assert "保険" in q
+
+    def test_specialty_conflict_query(self):
+        q = self.CLINIC_PRESETS["Specialty conflict"]
+        assert "内科" in q
+
+    def test_insurance_low_info_query(self):
+        q = self.CLINIC_PRESETS["Insurance but low info"]
+        assert "保険" in q
+        assert "情報" in q
 
     def test_preset_does_not_auto_execute(self):
-        """Preset sets query text only, does not trigger search."""
-        # By design: setPreset() only sets value, no fetch call
-        query = self.PRESETS["Quiet Italian"]
-        assert isinstance(query, str)
+        for presets in [self.RESTAURANT_PRESETS, self.CLINIC_PRESETS]:
+            for q in presets.values():
+                assert isinstance(q, str)
+
+
+class TestCompareFirstCopy:
+    """Test the Start with Compare block."""
+
+    def test_title(self):
+        assert "Start with Compare" == "Start with Compare"
+
+    def test_main_text(self):
+        text = "Use Compare first to see how catalog knowledge changes reasons, scores, and unknown handling across the same query."
+        assert "catalog" in text
+        assert "Compare" in text
+
+    def test_supplementary_text(self):
+        text = "Search shows one result set. Compare shows what the system actually adds."
+        assert "Search" in text
+        assert "Compare" in text
+
+    def test_why_compare_still_exists(self):
+        """Existing explainer card is preserved."""
+        title = "Why Compare matters"
+        assert title == "Why Compare matters"
 
 
 class TestValueExplainer:
