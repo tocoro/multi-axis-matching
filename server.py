@@ -353,7 +353,52 @@ async def api_ablation(req: PipelineRequest):
         elif "EVAL_MODEL" in os.environ and req.model:
             del os.environ["EVAL_MODEL"]
 
+    # Auto-save to artifacts/
+    _save_ablation_artifact(request_id, result)
+
     return result
+
+
+def _save_ablation_artifact(request_id: str, result: dict) -> None:
+    """Ablation 結果を artifacts/ に自動保存し、index と summary を更新する。"""
+    try:
+        from datetime import datetime, timezone
+        from scripts.run_solution_catalog_live_ablation import (
+            build_artifact_index,
+            build_artifact_directory_summary,
+        )
+
+        artifacts_dir = Path("artifacts")
+        artifacts_dir.mkdir(exist_ok=True)
+
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        filename = f"{request_id}_{ts}"
+
+        # Full JSON
+        out_path = artifacts_dir / f"{filename}.json"
+        out_path.write_text(
+            json.dumps(result, ensure_ascii=False, indent=2) + "\n", "utf-8")
+
+        # Index
+        index = build_artifact_index(result, artifact_path=str(out_path))
+        index_path = out_path.with_suffix(".index.json")
+        index_path.write_text(
+            json.dumps(index, ensure_ascii=False, indent=2) + "\n", "utf-8")
+
+        # Directory summary
+        index_items = []
+        for f in sorted(artifacts_dir.glob("*.index.json")):
+            try:
+                index_items.append(json.loads(f.read_text("utf-8")))
+            except (json.JSONDecodeError, OSError):
+                pass
+        summary = build_artifact_directory_summary(index_items)
+        (artifacts_dir / "_index_summary.json").write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2) + "\n", "utf-8")
+
+        logger.info("Saved ablation artifact: %s", out_path)
+    except Exception:
+        logger.warning("Failed to save ablation artifact", exc_info=True)
 
 
 @app.post("/api/evaluate")
