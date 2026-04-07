@@ -170,6 +170,33 @@
   .diag-card summary { cursor: pointer; font-weight: 500; color: var(--text); font-size: 13px; }
   .diag-pre { margin-top: 8px; white-space: pre-wrap; word-break: break-all; }
 
+  /* Scenario cards */
+  .scenario-section h2 { font-size: 15px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+  .scenario-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .scenario-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px 16px; position: relative;
+  }
+  .scenario-title { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+  .scenario-domain { font-size: 11px; color: var(--accent); font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
+  .scenario-query { font-size: 12px; color: var(--muted); margin: 6px 0; }
+  .scenario-shows h4 { font-size: 11px; font-weight: 600; color: var(--muted); margin: 8px 0 4px; }
+  .scenario-shows ul { margin: 0; padding-left: 16px; font-size: 11px; color: var(--text); }
+  .scenario-shows li { margin-bottom: 2px; }
+  .scenario-compare-btn {
+    margin-top: 8px; padding: 5px 12px; background: var(--accent); color: #fff;
+    border: none; border-radius: 4px; font-size: 11px; font-weight: 500; cursor: pointer;
+  }
+  .scenario-compare-btn:hover { opacity: 0.9; }
+  .what-to-notice {
+    background: #fffbeb; border: 1px solid #fde68a; border-radius: var(--radius);
+    padding: 10px 14px; margin-bottom: 12px;
+  }
+  .what-to-notice h4 { font-size: 13px; font-weight: 600; color: var(--orange); margin: 0 0 6px; }
+  .what-to-notice ul { margin: 0; padding-left: 16px; font-size: 12px; }
+  .what-to-notice li { margin-bottom: 2px; }
+  @media (max-width: 700px) { .scenario-grid { grid-template-columns: 1fr; } }
+
   /* Presets */
   .preset-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
   .preset-btn {
@@ -262,7 +289,7 @@
       <input id="query" type="text" placeholder="恵比寿で静かに話せるイタリアン。予算は3000円以内"
              value="恵比寿で静かに話せるイタリアン。予算は3000円以内">
       <button class="btn" id="searchBtn" onclick="runSearch()">Search</button>
-      <button class="btn" id="compareBtn" onclick="runAblation()" style="background:var(--muted)">Compare</button>
+      <button class="btn" id="compareBtn" onclick="currentScenarioId=null;runAblation()" style="background:var(--muted)">Compare</button>
     </div>
     <div class="options">
       <label><input type="checkbox" id="liveMode" onchange="toggleModel()"> Live (real LLM)</label>
@@ -296,6 +323,11 @@
     <button class="preset-btn" onclick="setPreset('恵比寿で夕方以降に内科を受診したい。保険適用希望')">After-work internal medicine</button>
     <button class="preset-btn" onclick="setPreset('渋谷で今夜受診したい。近いところがよいが、内科が望ましい')">Specialty conflict</button>
     <button class="preset-btn" onclick="setPreset('新宿近辺で保険が使えるクリニックを探したい。情報が少なくても候補は見たい')">Insurance but low info</button>
+  </div>
+
+  <div class="scenario-section">
+    <h2>Demo scenarios</h2>
+    <div class="scenario-grid" id="scenarioGrid"></div>
   </div>
 
   <div class="explainer-card">
@@ -485,13 +517,16 @@ async function runAblation() {
 
     status.textContent = `Ablation comparison done in ${elapsed}s`;
 
+    // What to notice (scenario-driven only)
+    const noticeHtml = getWhatToNoticeHtml();
+
     // Diff highlight badges
     const d = data.diff_summary;
     const scoreN = Object.keys(d.score_changes || {}).length;
     const reasonN = Object.keys(d.reason_changes || {}).length;
     const confN = Object.keys(d.confidence_changes || {}).length;
     const unkReduced = Object.keys(d.unknown_changes || {}).length > 0;
-    diagDiv.innerHTML = `<div class="diff-highlights">
+    diagDiv.innerHTML = noticeHtml + `<div class="diff-highlights">
       <span class="diff-badge">ranking changed: <span class="badge-val">${d.ranking_changed ? 'yes' : 'no'}</span></span>
       <span class="diff-badge">score changes: <span class="badge-val">${scoreN}</span></span>
       <span class="diff-badge">reason changes: <span class="badge-val">${reasonN}</span></span>
@@ -673,6 +708,54 @@ function renderSummaryPanel() {
 function setPreset(query) {
   document.getElementById('query').value = query;
 }
+
+// Scenario data
+const SCENARIOS = [
+  {id:'r1', domain:'restaurant', title:'Quiet Italian', query:'恵比寿で静かに話せるイタリアン。予算は3000円以内', bullets:['catalog can change reasons without forcing rank changes','good fit can be explained across multiple axes']},
+  {id:'r2', domain:'restaurant', title:'Cheap but far', query:'渋谷で安い和食。多少遠くてもよい', bullets:['trade-offs can surface without becoming hard disqualification','distance and budget can pull in different directions']},
+  {id:'r3', domain:'restaurant', title:'Information lacking', query:'新宿で落ち着いて話せる店。情報が少なくても候補は見たい', bullets:['unknowns should remain visible when evidence is missing','the system should avoid pretending certainty']},
+  {id:'c1', domain:'clinic', title:'After-work internal medicine', query:'恵比寿で夕方以降に内科を受診したい。保険適用希望', bullets:['specialty, hours, and insurance can align in one strong match','multi-axis support is clearer than a single relevance score']},
+  {id:'c2', domain:'clinic', title:'Specialty conflict', query:'渋谷で今夜受診したい。近いところがよいが、内科が望ましい', bullets:['specialty mismatch can remain a conflict without hard exclusion','the system separates conflicts from disqualification']},
+  {id:'c3', domain:'clinic', title:'Insurance but low info', query:'新宿近辺で保険が使えるクリニックを探したい。情報が少なくても候補は見たい', bullets:['low-information cases should still return candidates','unknown handling matters as much as ranking']},
+];
+
+let currentScenarioId = null;
+
+function renderScenarioCards() {
+  const grid = document.getElementById('scenarioGrid');
+  grid.innerHTML = SCENARIOS.map(s => `
+    <div class="scenario-card">
+      <div class="scenario-domain">${s.domain}</div>
+      <div class="scenario-title">${s.title}</div>
+      <div class="scenario-query">${s.query}</div>
+      <div class="scenario-shows">
+        <h4>What this shows</h4>
+        <ul>${s.bullets.map(b => `<li>${b}</li>`).join('')}</ul>
+      </div>
+      <button class="scenario-compare-btn" onclick="compareScenario('${s.id}')">Compare this scenario</button>
+    </div>
+  `).join('');
+}
+
+function compareScenario(scenarioId) {
+  const s = SCENARIOS.find(x => x.id === scenarioId);
+  if (!s) return;
+  currentScenarioId = scenarioId;
+  document.getElementById('query').value = s.query;
+  runAblation();
+}
+
+function getWhatToNoticeHtml() {
+  if (!currentScenarioId) return '';
+  const s = SCENARIOS.find(x => x.id === currentScenarioId);
+  if (!s) return '';
+  return `<div class="what-to-notice">
+    <h4>What to notice</h4>
+    <ul>${s.bullets.map(b => `<li>${b}</li>`).join('')}</ul>
+  </div>`;
+}
+
+renderScenarioCards();
 
 document.getElementById('query').addEventListener('keydown', e => {
   if (e.key === 'Enter') runSearch();

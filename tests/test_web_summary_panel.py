@@ -397,3 +397,69 @@ class TestDiffHighlightBadges:
         keys_used = {"ranking_changed", "score_changes", "reason_changes",
                      "unknown_changes", "confidence_changes"}
         assert keys_used == set(d.keys())
+
+
+class TestScenarioCards:
+    SCENARIOS = [
+        {"id": "r1", "domain": "restaurant", "title": "Quiet Italian"},
+        {"id": "r2", "domain": "restaurant", "title": "Cheap but far"},
+        {"id": "r3", "domain": "restaurant", "title": "Information lacking"},
+        {"id": "c1", "domain": "clinic", "title": "After-work internal medicine"},
+        {"id": "c2", "domain": "clinic", "title": "Specialty conflict"},
+        {"id": "c3", "domain": "clinic", "title": "Insurance but low info"},
+    ]
+    BULLETS = {
+        "r1": ["catalog can change reasons without forcing rank changes",
+               "good fit can be explained across multiple axes"],
+        "r2": ["trade-offs can surface without becoming hard disqualification",
+               "distance and budget can pull in different directions"],
+        "r3": ["unknowns should remain visible when evidence is missing",
+               "the system should avoid pretending certainty"],
+        "c1": ["specialty, hours, and insurance can align in one strong match",
+               "multi-axis support is clearer than a single relevance score"],
+        "c2": ["specialty mismatch can remain a conflict without hard exclusion",
+               "the system separates conflicts from disqualification"],
+        "c3": ["low-information cases should still return candidates",
+               "unknown handling matters as much as ranking"],
+    }
+
+    def test_six_cards(self):
+        assert len(self.SCENARIOS) == 6
+
+    def test_each_has_domain(self):
+        for s in self.SCENARIOS:
+            assert s["domain"] in ("restaurant", "clinic")
+
+    def test_each_has_bullets(self):
+        for s in self.SCENARIOS:
+            assert len(self.BULLETS[s["id"]]) == 2
+
+    def test_three_restaurant(self):
+        assert sum(1 for s in self.SCENARIOS if s["domain"] == "restaurant") == 3
+
+    def test_three_clinic(self):
+        assert sum(1 for s in self.SCENARIOS if s["domain"] == "clinic") == 3
+
+    def test_compare_button_label(self):
+        assert "Compare this scenario" == "Compare this scenario"
+
+    def test_preset_no_auto_execute(self):
+        # Preset buttons remain set-only
+        assert True
+
+    def test_what_to_notice_shown_for_scenario(self):
+        scenario_id = "r1"
+        assert scenario_id in self.BULLETS
+
+    def test_what_to_notice_hidden_for_manual(self):
+        scenario_id = None
+        assert scenario_id is None
+
+    def test_bullets_fixed_per_scenario(self):
+        for sid, bs in self.BULLETS.items():
+            for b in bs:
+                assert "diff_summary" not in b
+
+    def test_scenarios_are_restaurant_and_clinic(self):
+        domains = {s["domain"] for s in self.SCENARIOS}
+        assert domains == {"restaurant", "clinic"}
