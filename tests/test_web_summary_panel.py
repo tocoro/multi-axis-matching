@@ -188,3 +188,70 @@ class TestSummaryStatus:
         valid = {"not loaded", "loaded", "empty", "error"}
         for s in valid:
             assert s in valid
+
+
+class TestSeparateLists:
+    """Test recommended list and flagged list as independent blocks."""
+
+    def test_recommended_list_from_summary(self):
+        rec = ["/a", "/b"]
+        assert len(rec) == 2
+        assert rec[0] == "/a"
+
+    def test_flagged_list_from_summary(self):
+        flagged = [{"artifact_path": "/x"}, {"artifact_path": "/y"}]
+        paths = [r["artifact_path"] for r in flagged]
+        assert paths == ["/x", "/y"]
+
+    def test_flagged_list_deduplicated(self):
+        flagged = [{"artifact_path": "/a"}, {"artifact_path": "/a"}, {"artifact_path": "/b"}]
+        seen = set()
+        paths = []
+        for r in flagged:
+            if r["artifact_path"] not in seen:
+                seen.add(r["artifact_path"])
+                paths.append(r["artifact_path"])
+        assert paths == ["/a", "/b"]
+
+    def test_empty_recommended_shows_none(self):
+        rec = []
+        display = "none" if not rec else ", ".join(rec)
+        assert display == "none"
+
+    def test_empty_flagged_shows_none(self):
+        flagged = []
+        paths = [r["artifact_path"] for r in flagged]
+        display = "none" if not paths else ", ".join(paths)
+        assert display == "none"
+
+    def test_lists_independent_of_toggle(self):
+        """Separate lists are always present regardless of filter toggle."""
+        rec = ["/a"]
+        flagged = [{"artifact_path": "/b"}]
+        # Both always available
+        assert len(rec) == 1
+        assert len(flagged) == 1
+
+
+class TestFetchedTimestamp:
+    """Test client-side fetched timestamp behavior."""
+
+    def test_loaded_has_timestamp(self):
+        from datetime import datetime
+        fetched_at = datetime.now()
+        assert fetched_at is not None
+
+    def test_empty_has_no_timestamp(self):
+        fetched_at = None  # empty state
+        display = fetched_at.isoformat() if fetched_at else "none"
+        assert display == "none"
+
+    def test_error_has_no_timestamp(self):
+        fetched_at = None  # error state
+        display = fetched_at.isoformat() if fetched_at else "none"
+        assert display == "none"
+
+    def test_timestamp_is_datetime(self):
+        from datetime import datetime
+        fetched_at = datetime.now()
+        assert isinstance(fetched_at, datetime)

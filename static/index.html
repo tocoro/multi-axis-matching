@@ -487,6 +487,7 @@ async function runAblation() {
 let _summaryData = null;
 let _summaryStatus = 'not loaded';
 let _showFlaggedOnly = false;
+let _summaryFetchedAt = null;
 
 async function loadSummary() {
   const panel = document.getElementById('summaryPanel');
@@ -496,14 +497,17 @@ async function loadSummary() {
     if (!json.data) {
       _summaryData = null;
       _summaryStatus = 'empty';
+      _summaryFetchedAt = null;
       renderSummaryPanel();
       return;
     }
     _summaryData = json.data;
     _summaryStatus = 'loaded';
+    _summaryFetchedAt = new Date();
     renderSummaryPanel();
   } catch (e) {
     _summaryData = null;
+    _summaryFetchedAt = null;
     _summaryStatus = 'error';
     renderSummaryPanel();
   }
@@ -563,18 +567,38 @@ function renderSummaryPanel() {
     ? `<button class="load-summary-btn" onclick="toggleFlaggedFilter()" style="margin-left:12px">${filterLabel}</button>`
     : '';
 
+  const fetchedAtStr = _summaryFetchedAt ? _summaryFetchedAt.toLocaleString() : 'none';
+
+  // Separate lists (always visible)
+  const recListHtml = rec.length
+    ? `<ul class="summary-list">${rec.map(p => `<li>${p}</li>`).join('')}</ul>`
+    : '<span class="summary-val">none</span>';
+  const flaggedPaths = [];
+  const flaggedSeen = new Set();
+  for (const r of flaggedRows) {
+    if (!flaggedSeen.has(r.artifact_path)) { flaggedSeen.add(r.artifact_path); flaggedPaths.push(r.artifact_path); }
+  }
+  const flaggedListHtml = flaggedPaths.length
+    ? `<ul class="summary-list">${flaggedPaths.map(p => `<li>${p}</li>`).join('')}</ul>`
+    : '<span class="summary-val">none</span>';
+
   panel.innerHTML = `<div class="summary-panel">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
       <h3 style="margin:0">Ablation Directory Summary</h3>
       <span class="summary-val" style="color:var(--muted);font-size:11px">[${_summaryStatus}]</span>
       <button class="load-summary-btn" onclick="loadSummary()">Refresh</button>
     </div>
+    <div class="summary-row"><span class="summary-label">Fetched at</span><span class="summary-val">${fetchedAtStr}</span></div>
     <div class="summary-row"><span class="summary-label">Gate status</span><span class="summary-val ${gateClass}">${gs.gate_status || 'unknown'}</span></div>
     <div class="summary-row"><span class="summary-label">Manual review required</span><span class="summary-val">${mrYn}</span></div>
     <div class="summary-row"><span class="summary-label">Total runs</span><span class="summary-val">${s.total_runs || 0}</span></div>
     <div class="summary-row"><span class="summary-label">Flagged runs</span><span class="summary-val">${flaggedRows.length}</span></div>
     <div class="summary-row"><span class="summary-label">Latest artifact</span><span class="summary-val">${latest}</span></div>
     <div class="summary-row"><span class="summary-label">${_showFlaggedOnly ? 'Flagged artifacts' : 'Recommended artifacts'}</span>${filterBtn}${artifactHtml}</div>
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+      <div class="summary-row"><span class="summary-label">Recommended list</span>${recListHtml}</div>
+      <div class="summary-row"><span class="summary-label">Flagged list</span>${flaggedListHtml}</div>
+    </div>
   </div>`;
 }
 
