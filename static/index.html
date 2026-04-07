@@ -531,6 +531,8 @@ async function runAblation() {
     }
 
     const data = await resp.json();
+    _lastAblationData = data;
+    currentCandidateFocus = null;
     const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
 
     status.textContent = `Ablation comparison done in ${elapsed}s`;
@@ -600,7 +602,7 @@ async function runAblation() {
     }
     let changedHtml = `<div class="diff-card"><h3>Changed candidates</h3>`;
     if (changedIds.length) {
-      changedHtml += changedIds.map(c => `<div class="diff-row"><a href="#candidateCompare-${c}" style="color:var(--accent)">- ${c}</a></div>`).join('');
+      changedHtml += changedIds.map(c => `<div class="diff-row"><a href="#candidateCompare-${c}" onclick="setCandidateFocus('${c}')" style="color:var(--accent)">- ${c}</a></div>`).join('');
     } else {
       changedHtml += `<div class="diff-row"><span class="diff-val" style="color:var(--muted)">none</span></div>`;
     }
@@ -620,10 +622,12 @@ async function runAblation() {
     for (const e of withRanking) { if (!allSeen.has(e.candidate_id)) { allSeen.add(e.candidate_id); allCandidateIds.push(e.candidate_id); } }
     for (const e of withoutRanking) { if (!allSeen.has(e.candidate_id)) { allSeen.add(e.candidate_id); allCandidateIds.push(e.candidate_id); } }
 
-    // Candidate compare index
+    // Candidate compare index (with changed-only filter)
+    const indexIds = showChangedCandidatesOnly ? changedIds : allCandidateIds;
     let indexHtml = `<div class="diff-card"><h3>Candidate compare index</h3>`;
-    if (allCandidateIds.length) {
-      indexHtml += allCandidateIds.map(c => `<div class="diff-row"><a href="#candidateCompare-${c}" style="color:var(--accent)">${c}</a></div>`).join('');
+    indexHtml += `<div style="margin-bottom:6px"><button class="load-summary-btn" onclick="toggleChangedFilter()">${showChangedCandidatesOnly ? 'Show all candidates' : 'Show changed candidates only'}</button></div>`;
+    if (indexIds.length) {
+      indexHtml += indexIds.map(c => `<div class="diff-row"><a href="#candidateCompare-${c}" onclick="setCandidateFocus('${c}')" style="color:var(--accent)">${c}</a></div>`).join('');
     } else {
       indexHtml += `<div class="diff-row"><span class="diff-val" style="color:var(--muted)">none</span></div>`;
     }
@@ -641,7 +645,16 @@ async function runAblation() {
       const woEntry = withoutRanking.find(e => e.candidate_id === cid);
       const wCard = wEntry ? renderResult(wEntry, withSources[cid]) : '<div class="result-card" style="opacity:0.4"><div class="result-meta">Not in with-catalog results</div></div>';
       const woCard = woEntry ? renderResult(woEntry, withoutSources[cid]) : '<div class="result-card" style="opacity:0.4"><div class="result-meta">Not in without-catalog results</div></div>';
+      // Per-candidate delta
+      const sc = cid in (d.score_changes || {}) ? 'changed' : 'unchanged';
+      const rc = cid in (d.reason_changes || {}) ? 'changed' : 'unchanged';
+      const cc = cid in (d.confidence_changes || {}) ? 'changed' : 'unchanged';
+      const uc = cid in (d.unknown_changes || {}) ? 'changed' : 'unchanged';
+      const deltaHtml = `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;padding:4px 8px;background:var(--bg);border-radius:4px">
+        <strong>Candidate delta:</strong> score: ${sc} | reason: ${rc} | confidence: ${cc} | unknown: ${uc}
+      </div>`;
       pairHtml += `<div id="candidateCompare-${cid}" style="scroll-margin-top:80px">
+        ${deltaHtml}
         <div class="ablation-wrapper">
           <div class="ablation-col">${wCard}</div>
           <div class="ablation-col">${woCard}</div>
@@ -650,6 +663,7 @@ async function runAblation() {
     }
 
     resultsDiv.innerHTML = `
+      <div class="demo-context" id="candidateFocus">Candidate focus: none</div>
       <div class="ablation-wrapper" style="margin-bottom:12px">
         <div class="ablation-col" id="withCatalogResults"><h3>With Catalog</h3></div>
         <div class="ablation-col" id="withoutCatalogResults"><h3>Without Catalog</h3></div>
@@ -785,6 +799,22 @@ function renderSummaryPanel() {
 
 function setPreset(query) {
   document.getElementById('query').value = query;
+}
+
+// Candidate compare state
+let showChangedCandidatesOnly = false;
+let currentCandidateFocus = null;
+let _lastAblationData = null;
+
+function toggleChangedFilter() {
+  showChangedCandidatesOnly = !showChangedCandidatesOnly;
+  if (_lastAblationData) runAblationRender(_lastAblationData);
+}
+
+function setCandidateFocus(cid) {
+  currentCandidateFocus = cid;
+  const el = document.getElementById('candidateFocus');
+  if (el) el.textContent = `Candidate focus: ${cid}`;
 }
 
 // Domain filter state

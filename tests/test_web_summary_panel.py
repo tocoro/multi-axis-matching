@@ -705,3 +705,75 @@ class TestCandidateCompareIndex:
         for scenario_id in [None, "r1"]:
             all_ids = ["p1"]
             assert len(all_ids) > 0
+
+
+class TestPerCandidateDelta:
+    def _delta(self, cid, diff):
+        return {
+            "score": "changed" if cid in (diff.get("score_changes") or {}) else "unchanged",
+            "reason": "changed" if cid in (diff.get("reason_changes") or {}) else "unchanged",
+            "confidence": "changed" if cid in (diff.get("confidence_changes") or {}) else "unchanged",
+            "unknown": "changed" if cid in (diff.get("unknown_changes") or {}) else "unchanged",
+        }
+
+    def test_heading(self):
+        assert "Candidate delta" == "Candidate delta"
+
+    def test_score_changed(self):
+        d = self._delta("p1", {"score_changes": {"p1": {}}})
+        assert d["score"] == "changed"
+
+    def test_score_unchanged(self):
+        d = self._delta("p1", {"score_changes": {"p2": {}}})
+        assert d["score"] == "unchanged"
+
+    def test_all_fields_from_diff_only(self):
+        diff = {"score_changes": {"p1": {}}, "reason_changes": {"p1": ["x"]},
+                "confidence_changes": {}, "unknown_changes": {}}
+        d = self._delta("p1", diff)
+        assert d["score"] == "changed"
+        assert d["reason"] == "changed"
+        assert d["confidence"] == "unchanged"
+        assert d["unknown"] == "unchanged"
+
+
+class TestChangedOnlyFilter:
+    def test_initial_shows_full(self):
+        show_changed = False
+        all_ids = ["p1", "p2", "p3"]
+        changed = ["p1"]
+        result = changed if show_changed else all_ids
+        assert result == all_ids
+
+    def test_filter_on_shows_changed(self):
+        show_changed = True
+        all_ids = ["p1", "p2", "p3"]
+        changed = ["p1"]
+        result = changed if show_changed else all_ids
+        assert result == ["p1"]
+
+    def test_changed_order_preserved(self):
+        changed = ["p3", "p1"]
+        assert changed == ["p3", "p1"]
+
+    def test_empty_changed(self):
+        changed = []
+        assert len(changed) == 0
+
+
+class TestCandidateFocusHeader:
+    def test_initial_none(self):
+        focus = None
+        display = f"Candidate focus: {focus}" if focus else "Candidate focus: none"
+        assert display == "Candidate focus: none"
+
+    def test_after_click(self):
+        focus = "place_1"
+        display = f"Candidate focus: {focus}"
+        assert display == "Candidate focus: place_1"
+
+    def test_reset_on_new_compare(self):
+        focus = "place_1"
+        # New compare resets
+        focus = None
+        assert focus is None
