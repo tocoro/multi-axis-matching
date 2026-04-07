@@ -247,6 +247,19 @@ async def index():
     return FileResponse("static/index.html")
 
 
+@app.get("/api/directory-summary")
+async def api_directory_summary():
+    """artifacts/_index_summary.json を読んで返す。"""
+    summary_path = Path("artifacts/_index_summary.json")
+    if not summary_path.exists():
+        return {"error": "no_summary", "data": None}
+    try:
+        data = json.loads(summary_path.read_text("utf-8"))
+        return {"error": None, "data": data}
+    except (json.JSONDecodeError, OSError) as e:
+        return {"error": str(e), "data": None}
+
+
 @app.post("/api/pipeline")
 async def api_pipeline(req: PipelineRequest):
     global _request_counter

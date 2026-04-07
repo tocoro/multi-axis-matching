@@ -168,6 +168,25 @@
   .diag-card summary { cursor: pointer; font-weight: 500; color: var(--text); font-size: 13px; }
   .diag-pre { margin-top: 8px; white-space: pre-wrap; word-break: break-all; }
 
+  /* Summary panel */
+  .summary-panel {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px 20px; margin-bottom: 16px;
+  }
+  .summary-panel h3 { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
+  .summary-row { display: flex; gap: 8px; font-size: 13px; padding: 3px 0; }
+  .summary-label { font-weight: 500; color: var(--muted); min-width: 180px; }
+  .summary-val { font-family: 'SF Mono', Monaco, monospace; font-size: 12px; }
+  .gate-pass { color: var(--green); font-weight: 600; }
+  .gate-review { color: var(--orange); font-weight: 600; }
+  .gate-empty { color: var(--muted); }
+  .summary-list { margin: 4px 0 4px 16px; font-size: 12px; }
+  .summary-list li { margin-bottom: 2px; font-family: 'SF Mono', Monaco, monospace; }
+  .load-summary-btn {
+    font-size: 12px; color: var(--accent); cursor: pointer; border: none;
+    background: none; padding: 0; text-decoration: underline;
+  }
+
   /* Ablation comparison */
   .ablation-wrapper { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   .ablation-col { min-width: 0; }
@@ -231,6 +250,8 @@
     </div>
   </div>
 
+  <div style="margin-bottom:12px"><button class="load-summary-btn" onclick="loadSummary()">Load Ablation Summary</button></div>
+  <div id="summaryPanel" style="display:none"></div>
   <div class="status" id="status"></div>
   <div id="diagnostics"></div>
   <div id="results"></div>
@@ -456,6 +477,43 @@ async function runAblation() {
     status.textContent = `Error: ${e.message}`;
   } finally {
     btn.disabled = false;
+  }
+}
+
+async function loadSummary() {
+  const panel = document.getElementById('summaryPanel');
+  try {
+    const resp = await fetch('/api/directory-summary');
+    const json = await resp.json();
+    if (!json.data) {
+      panel.style.display = 'block';
+      panel.innerHTML = '<div class="summary-panel"><h3>Ablation Summary</h3><div class="summary-row"><span class="summary-val" style="color:var(--muted)">No summary available. Run ablation with --out first.</span></div></div>';
+      return;
+    }
+    const s = json.data;
+    const gs = s.gate_summary || {};
+    const gateClass = gs.gate_status === 'pass' ? 'gate-pass' : gs.gate_status === 'review_required' ? 'gate-review' : 'gate-empty';
+    const mrYn = gs.manual_review_required ? 'yes' : 'no';
+    const latest = s.latest_artifact ? s.latest_artifact.artifact_path : 'none';
+    const rec = (s.recommended_artifact_paths || []);
+    const recHtml = rec.length
+      ? `<ul class="summary-list">${rec.map(p => `<li>${p}</li>`).join('')}</ul>`
+      : '<span class="summary-val">none</span>';
+    const flagged = (s.flagged_rows || []).length;
+
+    panel.style.display = 'block';
+    panel.innerHTML = `<div class="summary-panel">
+      <h3>Ablation Directory Summary</h3>
+      <div class="summary-row"><span class="summary-label">Gate status</span><span class="summary-val ${gateClass}">${gs.gate_status || 'unknown'}</span></div>
+      <div class="summary-row"><span class="summary-label">Manual review required</span><span class="summary-val">${mrYn}</span></div>
+      <div class="summary-row"><span class="summary-label">Total runs</span><span class="summary-val">${s.total_runs || 0}</span></div>
+      <div class="summary-row"><span class="summary-label">Flagged runs</span><span class="summary-val">${flagged}</span></div>
+      <div class="summary-row"><span class="summary-label">Latest artifact</span><span class="summary-val">${latest}</span></div>
+      <div class="summary-row"><span class="summary-label">Recommended artifacts</span>${recHtml}</div>
+    </div>`;
+  } catch (e) {
+    panel.style.display = 'block';
+    panel.innerHTML = `<div class="summary-panel"><span class="summary-val" style="color:var(--red)">Error loading summary: ${e.message}</span></div>`;
   }
 }
 
