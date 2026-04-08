@@ -12,6 +12,16 @@ import logging
 import os
 import sys
 import traceback
+from pathlib import Path
+
+# Load .env if present
+_env_path = Path(__file__).resolve().parent / ".env"
+if _env_path.exists():
+    for line in _env_path.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip())
 from contextlib import asynccontextmanager
 from pathlib import Path
 from unittest.mock import patch
